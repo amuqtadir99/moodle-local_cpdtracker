@@ -44,6 +44,16 @@ Cycles and categories that already have logged activities cannot be deleted, and
 
 Site administration > Plugins > Local plugins > CPD Tracker > CPD compliance report lists every member with their points, categories met and compliance status for a chosen cycle, 50 per page, sorted by surname. Members are active users who hold `local/cpdtracker:logactivity`. Requires `local/cpdtracker:viewreport`.
 
+## Running the tests
+
+PHPUnit tests live in `tests/`. From your Moodle root, after initialising the PHPUnit environment (`php admin/tool/phpunit/cli/init.php`):
+
+```
+vendor/bin/phpunit --testsuite local_cpdtracker_testsuite
+```
+
+Test data is created with the plugin generator in `tests/generator/lib.php` (`$this->getDataGenerator()->get_plugin_generator('local_cpdtracker')`).
+
 ## Status
 
 Alpha.
