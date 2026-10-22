@@ -1,0 +1,7 @@
+# Moodle code uses LF line endings; keep them on Windows checkouts too.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.svg text
