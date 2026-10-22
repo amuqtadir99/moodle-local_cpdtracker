@@ -27,7 +27,7 @@ require_once($CFG->libdir . '/formslib.php');
  * not a hidden field, so it cannot be changed by editing the form.
  *
  * @package    local_cpdtracker
- * @copyright  2026 Abdul Muqtadir
+ * @copyright  2026 | WITWEB SOLUTIONS | www.witweb.com.au | Developer: Abdul Muqtadir | Github: amuqtadir99
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class cycle_form extends \moodleform {

@@ -16,11 +16,11 @@ Members log CPD activities against categories within a cycle. Each member sees t
 
 ## Requirements
 
-- Moodle 4.5 or later
+- Moodle 4.5 (LTS)
 
 ## Installation
 
-1. Copy this folder to `local/cpdtracker` in your Moodle code. On Moodle 5.1 and later, use `public/local/cpdtracker`.
+1. Copy this folder to `local/cpdtracker` in your Moodle code.
 2. Visit Site administration > Notifications to complete the install.
 3. Members reach the plugin from their profile page (My CPD) or at `/local/cpdtracker/index.php`.
 
@@ -54,10 +54,13 @@ vendor/bin/phpunit --testsuite local_cpdtracker_testsuite
 
 Test data is created with the plugin generator in `tests/generator/lib.php` (`$this->getDataGenerator()->get_plugin_generator('local_cpdtracker')`).
 
-## Status
+## Source and support
 
-Alpha.
+- Source code: https://github.com/amuqtadir99/moodle-local_cpdtracker
+- Report a bug or request a feature: https://github.com/amuqtadir99/moodle-local_cpdtracker/issues
+
+Developed by Abdul Muqtadir at WITWEB SOLUTIONS (https://www.witweb.com.au).
 
 ## License
 
-GNU GPL v3 or later. See https://www.gnu.org/licenses/gpl-3.0.html.
+GNU GPL v3 or later. See [LICENSE](LICENSE).

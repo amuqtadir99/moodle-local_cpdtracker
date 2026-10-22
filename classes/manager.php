@@ -25,7 +25,7 @@ use stdClass;
  * Page files should only call into this class, so the logic stays in one testable place.
  *
  * @package    local_cpdtracker
- * @copyright  2026 Abdul Muqtadir
+ * @copyright  2026 | WITWEB SOLUTIONS | www.witweb.com.au | Developer: Abdul Muqtadir | Github: amuqtadir99
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class manager {

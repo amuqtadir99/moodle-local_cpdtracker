@@ -1,5 +1,10 @@
 # Changes
 
+## 1.0.0 (2026102205) - 2026-10-22
+
+- First stable release, supporting Moodle 4.5.
+- Added the GPL v3 LICENSE file, and source code and issue tracker links in the README.
+
 ## 0.3.1 (2026102204) - 2026-10-22
 
 - Code style updated to pass the current Moodle coding standard (moodle-cs) with no errors or warnings.

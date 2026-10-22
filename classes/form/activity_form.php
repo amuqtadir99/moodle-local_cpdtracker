@@ -26,7 +26,7 @@ require_once($CFG->libdir . '/formslib.php');
  * Custom data: 'cycle' (cycle record) and 'categories' (category records keyed by id).
  *
  * @package    local_cpdtracker
- * @copyright  2026 Abdul Muqtadir
+ * @copyright  2026 | WITWEB SOLUTIONS | www.witweb.com.au | Developer: Abdul Muqtadir | Github: amuqtadir99
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class activity_form extends \moodleform {

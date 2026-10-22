@@ -18,15 +18,15 @@
  * Version details for local_cpdtracker.
  *
  * @package    local_cpdtracker
- * @copyright  2026 Abdul Muqtadir
+ * @copyright  2026 | WITWEB SOLUTIONS | www.witweb.com.au | Developer: Abdul Muqtadir | Github: amuqtadir99
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_cpdtracker';
-$plugin->version   = 2026102204;
+$plugin->version   = 2026102205;
 $plugin->requires  = 2024100700; // Moodle 4.5 LTS.
-$plugin->supported = [405, 501];
-$plugin->maturity  = MATURITY_ALPHA;
-$plugin->release   = '0.3.1';
+$plugin->supported = [405, 405];
+$plugin->maturity  = MATURITY_STABLE;
+$plugin->release   = '1.0.0';

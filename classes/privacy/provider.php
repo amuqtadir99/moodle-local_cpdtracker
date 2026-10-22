@@ -33,7 +33,7 @@ use core_privacy\local\request\writer;
  * member's user context. Cycles and categories hold no personal data.
  *
  * @package    local_cpdtracker
- * @copyright  2026 Abdul Muqtadir
+ * @copyright  2026 | WITWEB SOLUTIONS | www.witweb.com.au | Developer: Abdul Muqtadir | Github: amuqtadir99
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class provider implements
