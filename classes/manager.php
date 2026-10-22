@@ -29,7 +29,6 @@ use stdClass;
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class manager {
-
     /** @var string Cycle table. */
     const TABLE_CYCLE = 'local_cpdtracker_cycle';
 

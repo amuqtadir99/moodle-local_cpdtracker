@@ -87,10 +87,16 @@ echo html_writer::tag('p', get_string('cycledates', 'local_cpdtracker', $manager
     get_string('requiredpointsis', 'local_cpdtracker', format_float($cycle->requiredpoints, 2)));
 
 echo html_writer::div(
-    $OUTPUT->single_button(new moodle_url('/local/cpdtracker/editcategory.php', ['cycleid' => $cycle->id]),
-        get_string('addcategory', 'local_cpdtracker'), 'get') .
-    $OUTPUT->single_button(new moodle_url('/local/cpdtracker/manage.php'),
-        get_string('backtocycles', 'local_cpdtracker'), 'get'),
+    $OUTPUT->single_button(
+        new moodle_url('/local/cpdtracker/editcategory.php', ['cycleid' => $cycle->id]),
+        get_string('addcategory', 'local_cpdtracker'),
+        'get'
+    ) .
+    $OUTPUT->single_button(
+        new moodle_url('/local/cpdtracker/manage.php'),
+        get_string('backtocycles', 'local_cpdtracker'),
+        'get'
+    ),
     'd-flex gap-2 mb-3'
 );
 

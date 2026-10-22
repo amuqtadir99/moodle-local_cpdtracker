@@ -30,7 +30,6 @@ require_once($CFG->libdir . '/formslib.php');
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class category_form extends \moodleform {
-
     /**
      * Form definition.
      */
@@ -42,8 +41,12 @@ class category_form extends \moodleform {
         $mform->addRule('name', null, 'required', null, 'client');
         $mform->addRule('name', get_string('maximumchars', '', 255), 'maxlength', 255, 'client');
 
-        $mform->addElement('textarea', 'description', get_string('description', 'local_cpdtracker'),
-            ['rows' => 3, 'cols' => 60]);
+        $mform->addElement(
+            'textarea',
+            'description',
+            get_string('description', 'local_cpdtracker'),
+            ['rows' => 3, 'cols' => 60]
+        );
         $mform->setType('description', PARAM_TEXT);
 
         $mform->addElement('float', 'minpoints', get_string('minpoints', 'local_cpdtracker'));

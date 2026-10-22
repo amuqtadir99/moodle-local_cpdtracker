@@ -40,8 +40,13 @@ function local_cpdtracker_myprofile_navigation(\core_user\output\myprofile\tree 
     }
 
     $url = new moodle_url('/local/cpdtracker/index.php');
-    $node = new \core_user\output\myprofile\node('miscellaneous', 'local_cpdtracker',
-        get_string('mycpd', 'local_cpdtracker'), null, $url);
+    $node = new \core_user\output\myprofile\node(
+        'miscellaneous',
+        'local_cpdtracker',
+        get_string('mycpd', 'local_cpdtracker'),
+        null,
+        $url
+    );
     $tree->add_node($node);
 
     return true;

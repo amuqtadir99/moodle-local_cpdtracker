@@ -30,7 +30,6 @@ use stdClass;
  * @covers     \local_cpdtracker\manager
  */
 final class manager_test extends advanced_testcase {
-
     /** @var manager */
     private manager $manager;
 
@@ -394,8 +393,10 @@ final class manager_test extends advanced_testcase {
         $this->assert_moodle_exception('cannoteditactivity', fn() => $this->manager->delete_activity($activity->id, $other->id));
 
         $this->assertFalse($this->manager->can_edit_activity($closedactivity, $owner->id));
-        $this->assert_moodle_exception('cannoteditactivity',
-            fn() => $this->manager->delete_activity($closedactivity->id, $owner->id));
+        $this->assert_moodle_exception(
+            'cannoteditactivity',
+            fn() => $this->manager->delete_activity($closedactivity->id, $owner->id)
+        );
 
         $this->assertTrue($this->manager->can_edit_activity($activity, $owner->id));
         $this->manager->delete_activity($activity->id, $owner->id);
@@ -608,8 +609,10 @@ final class manager_test extends advanced_testcase {
         $this->assertSame(['C', 'A', 'B'], $order());
 
         // Sort orders are renumbered 1..n.
-        $sortorders = array_values(array_map(fn($category) => (int)$category->sortorder,
-            $this->manager->get_categories($cycle->id)));
+        $sortorders = array_values(array_map(
+            fn($category) => (int)$category->sortorder,
+            $this->manager->get_categories($cycle->id)
+        ));
         $this->assertSame([1, 2, 3], $sortorders);
     }
 
@@ -619,7 +622,7 @@ final class manager_test extends advanced_testcase {
         $cycle = $this->generator()->create_cycle();
         $busy = $this->generator()->create_category(['cycleid' => $cycle->id]);
         $quiet = $this->generator()->create_category(['cycleid' => $cycle->id]);
-        foreach ([1, 2, 3] as $unused) {
+        for ($i = 0; $i < 3; $i++) {
             $this->generator()->create_activity(['userid' => $user->id, 'cycleid' => $cycle->id, 'categoryid' => $busy->id]);
         }
 

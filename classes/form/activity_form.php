@@ -30,7 +30,6 @@ require_once($CFG->libdir . '/formslib.php');
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class activity_form extends \moodleform {
-
     /**
      * Form definition.
      */
@@ -57,8 +56,12 @@ class activity_form extends \moodleform {
         $mform->addRule('title', null, 'required', null, 'client');
         $mform->addRule('title', get_string('maximumchars', '', 255), 'maxlength', 255, 'client');
 
-        $mform->addElement('textarea', 'description', get_string('description', 'local_cpdtracker'),
-            ['rows' => 4, 'cols' => 60]);
+        $mform->addElement(
+            'textarea',
+            'description',
+            get_string('description', 'local_cpdtracker'),
+            ['rows' => 4, 'cols' => 60]
+        );
         $mform->setType('description', PARAM_TEXT);
 
         $mform->addElement('date_selector', 'activitydate', get_string('activitydate', 'local_cpdtracker'));
@@ -92,8 +95,11 @@ class activity_form extends \moodleform {
 
         if ($data['activitydate'] < $cycle->startdate || $data['activitydate'] > $cycle->enddate) {
             $manager = new \local_cpdtracker\manager();
-            $errors['activitydate'] = get_string('errordateoutsidecycle', 'local_cpdtracker',
-                $manager->format_cycle_dates($cycle));
+            $errors['activitydate'] = get_string(
+                'errordateoutsidecycle',
+                'local_cpdtracker',
+                $manager->format_cycle_dates($cycle)
+            );
         }
 
         return $errors;

@@ -26,7 +26,6 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class local_cpdtracker_generator extends component_generator_base {
-
     /** @var int Cycles created since the last reset. */
     protected $cyclecount = 0;
 

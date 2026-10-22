@@ -45,12 +45,18 @@ echo $OUTPUT->header();
 // Shortcuts for staff.
 $buttons = '';
 if (has_capability('local/cpdtracker:manage', $context)) {
-    $buttons .= $OUTPUT->single_button(new moodle_url('/local/cpdtracker/manage.php'),
-        get_string('managecycles', 'local_cpdtracker'), 'get');
+    $buttons .= $OUTPUT->single_button(
+        new moodle_url('/local/cpdtracker/manage.php'),
+        get_string('managecycles', 'local_cpdtracker'),
+        'get'
+    );
 }
 if (has_capability('local/cpdtracker:viewreport', $context)) {
-    $buttons .= $OUTPUT->single_button(new moodle_url('/local/cpdtracker/report.php'),
-        get_string('compliancereport', 'local_cpdtracker'), 'get');
+    $buttons .= $OUTPUT->single_button(
+        new moodle_url('/local/cpdtracker/report.php'),
+        get_string('compliancereport', 'local_cpdtracker'),
+        'get'
+    );
 }
 if ($buttons) {
     echo html_writer::div($buttons, 'd-flex gap-2 mb-3');
@@ -108,8 +114,11 @@ if ($summary->categories) {
 echo $OUTPUT->heading(get_string('activities', 'local_cpdtracker'), 4);
 
 if ($cycleopen) {
-    echo $OUTPUT->single_button(new moodle_url('/local/cpdtracker/edit.php'),
-        get_string('logactivity', 'local_cpdtracker'), 'get');
+    echo $OUTPUT->single_button(
+        new moodle_url('/local/cpdtracker/edit.php'),
+        get_string('logactivity', 'local_cpdtracker'),
+        'get'
+    );
 }
 
 if (!$summary->activities) {

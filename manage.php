@@ -63,8 +63,11 @@ if ($delete) {
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('managecycles', 'local_cpdtracker'));
 
-echo $OUTPUT->single_button(new moodle_url('/local/cpdtracker/editcycle.php'),
-    get_string('addcycle', 'local_cpdtracker'), 'get');
+echo $OUTPUT->single_button(
+    new moodle_url('/local/cpdtracker/editcycle.php'),
+    get_string('addcycle', 'local_cpdtracker'),
+    'get'
+);
 
 $cycles = $manager->get_cycles();
 
