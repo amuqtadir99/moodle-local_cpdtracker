@@ -30,9 +30,17 @@ Members log CPD activities against categories within a cycle. Each member sees t
 | `local/cpdtracker:manage` | Manager | Manage cycles and categories |
 | `local/cpdtracker:viewreport` | Manager | View the member compliance report |
 
+## Setting up cycles
+
+1. Go to Site administration > Plugins > Local plugins > CPD Tracker > Manage CPD cycles. Users with `local/cpdtracker:manage` also get a Manage CPD cycles button on My CPD.
+2. Add a cycle: name, start and end dates, and the total points members need. Cycles cannot overlap. A cycle runs from the start of its first day to the end of its last day.
+3. Add categories to the cycle, each with an optional minimum and an optional cap (maximum counted points). Reorder them with the arrows.
+
+Cycles and categories that already have logged activities cannot be deleted, and a cycle's dates cannot be changed to exclude existing activities.
+
 ## Status
 
-Alpha. Cycle and category management screens are not built yet; create them directly in the `local_cpdtracker_cycle` and `local_cpdtracker_category` tables for now.
+Alpha.
 
 ## License
 

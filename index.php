@@ -42,6 +42,11 @@ $cycle = $manager->get_current_cycle();
 
 echo $OUTPUT->header();
 
+if (has_capability('local/cpdtracker:manage', $context)) {
+    echo $OUTPUT->single_button(new moodle_url('/local/cpdtracker/manage.php'),
+        get_string('managecycles', 'local_cpdtracker'), 'get');
+}
+
 if (!$cycle) {
     echo $OUTPUT->notification(get_string('nocurrentcycle', 'local_cpdtracker'), notification::NOTIFY_INFO);
     echo $OUTPUT->footer();

@@ -311,4 +311,380 @@ class manager {
             'end' => userdate($cycle->enddate, $format),
         ];
     }
+
+    /**
+     * Get all cycles, newest first, with category and activity counts.
+     *
+     * @return stdClass[] Cycle records keyed by id, each with categorycount and activitycount.
+     */
+    public function get_cycles(): array {
+        global $DB;
+
+        $sql = "SELECT c.*,
+                       (SELECT COUNT(1) FROM {local_cpdtracker_category} ca WHERE ca.cycleid = c.id) AS categorycount,
+                       (SELECT COUNT(1) FROM {local_cpdtracker_activity} a WHERE a.cycleid = c.id) AS activitycount
+                  FROM {local_cpdtracker_cycle} c
+              ORDER BY c.startdate DESC, c.id DESC";
+
+        return $DB->get_records_sql($sql);
+    }
+
+    /**
+     * Where a cycle sits relative to the given time.
+     *
+     * @param stdClass $cycle
+     * @param int|null $time Unix timestamp, defaults to now.
+     * @return string 'upcoming', 'current' or 'ended'.
+     */
+    public function get_cycle_status(stdClass $cycle, ?int $time = null): string {
+        $time = $time ?? time();
+
+        if ($time < (int)$cycle->startdate) {
+            return 'upcoming';
+        }
+        if ($time > (int)$cycle->enddate) {
+            return 'ended';
+        }
+        return 'current';
+    }
+
+    /**
+     * Midnight at the start of the day containing $time, in the current user's timezone.
+     *
+     * @param int $time
+     * @return int
+     */
+    public function start_of_day(int $time): int {
+        return usergetmidnight($time);
+    }
+
+    /**
+     * 23:59:59 on the day containing $time, in the current user's timezone.
+     *
+     * Cycles end at the end of their last day so members can log activities on it.
+     *
+     * @param int $time
+     * @return int
+     */
+    public function end_of_day(int $time): int {
+        $date = new \DateTime('@' . $time);
+        $date->setTimezone(\core_date::get_user_timezone_object());
+        $date->setTime(23, 59, 59);
+
+        return $date->getTimestamp();
+    }
+
+    /**
+     * Find a cycle whose dates overlap the given range.
+     *
+     * @param int $start
+     * @param int $end
+     * @param int $excludeid Cycle to ignore, e.g. the one being edited.
+     * @return stdClass|null
+     */
+    public function find_overlapping_cycle(int $start, int $end, int $excludeid = 0): ?stdClass {
+        global $DB;
+
+        $records = $DB->get_records_select(
+            self::TABLE_CYCLE,
+            'startdate <= :enddate AND enddate >= :startdate AND id <> :excludeid',
+            ['enddate' => $end, 'startdate' => $start, 'excludeid' => $excludeid],
+            'startdate ASC',
+            '*',
+            0,
+            1
+        );
+
+        return $records ? reset($records) : null;
+    }
+
+    /**
+     * Count activities logged in a cycle.
+     *
+     * @param int $cycleid
+     * @return int
+     */
+    public function count_cycle_activities(int $cycleid): int {
+        global $DB;
+
+        return $DB->count_records(self::TABLE_ACTIVITY, ['cycleid' => $cycleid]);
+    }
+
+    /**
+     * Count a cycle's activities dated outside a range.
+     *
+     * @param int $cycleid
+     * @param int $start
+     * @param int $end
+     * @return int
+     */
+    public function count_activities_outside(int $cycleid, int $start, int $end): int {
+        global $DB;
+
+        return $DB->count_records_select(
+            self::TABLE_ACTIVITY,
+            'cycleid = :cycleid AND (activitydate < :startdate OR activitydate > :enddate)',
+            ['cycleid' => $cycleid, 'startdate' => $start, 'enddate' => $end]
+        );
+    }
+
+    /**
+     * Check cycle data before saving.
+     *
+     * Used by both the form and save_cycle(), so the rules live in one place.
+     *
+     * @param stdClass $data id (0 for new), name, startdate, enddate, requiredpoints.
+     * @return string[] Error messages keyed by field name, empty if valid.
+     */
+    public function validate_cycle(stdClass $data): array {
+        $errors = [];
+        $id = (int)($data->id ?? 0);
+
+        $name = trim($data->name ?? '');
+        if ($name === '') {
+            $errors['name'] = get_string('required');
+        } else if (\core_text::strlen($name) > 255) {
+            $errors['name'] = get_string('maximumchars', '', 255);
+        }
+
+        if ((float)($data->requiredpoints ?? 0) < 0) {
+            $errors['requiredpoints'] = get_string('errornegativepoints', 'local_cpdtracker');
+        }
+
+        $start = $this->start_of_day((int)$data->startdate);
+        $end = $this->end_of_day((int)$data->enddate);
+        if ($end < $start) {
+            $errors['enddate'] = get_string('errorenddatebeforestart', 'local_cpdtracker');
+            return $errors;
+        }
+
+        $overlap = $this->find_overlapping_cycle($start, $end, $id);
+        if ($overlap) {
+            $errors['startdate'] = get_string('erroroverlap', 'local_cpdtracker', format_string($overlap->name));
+        }
+
+        if ($id) {
+            $outside = $this->count_activities_outside($id, $start, $end);
+            if ($outside) {
+                $errors['enddate'] = get_string('erroractivitiesoutside', 'local_cpdtracker', $outside);
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Create or update a cycle. Start and end dates are widened to whole days.
+     *
+     * @param stdClass $data id (0 for new), name, description, startdate, enddate, requiredpoints.
+     * @return int Cycle id.
+     * @throws moodle_exception If the data fails validate_cycle().
+     */
+    public function save_cycle(stdClass $data): int {
+        global $DB;
+
+        $errors = $this->validate_cycle($data);
+        if ($errors) {
+            throw new moodle_exception('errorinvaliddata', 'local_cpdtracker', '', implode(' ', $errors));
+        }
+
+        $now = time();
+        $record = (object)[
+            'name' => trim($data->name),
+            'description' => $data->description ?? '',
+            'startdate' => $this->start_of_day((int)$data->startdate),
+            'enddate' => $this->end_of_day((int)$data->enddate),
+            'requiredpoints' => round((float)$data->requiredpoints, 2),
+            'timemodified' => $now,
+        ];
+
+        if (!empty($data->id)) {
+            $record->id = $this->get_cycle((int)$data->id)->id;
+            $DB->update_record(self::TABLE_CYCLE, $record);
+            return (int)$record->id;
+        }
+
+        $record->timecreated = $now;
+        return (int)$DB->insert_record(self::TABLE_CYCLE, $record);
+    }
+
+    /**
+     * Delete a cycle and its categories. Refused if members have logged activities in it.
+     *
+     * @param int $cycleid
+     * @throws moodle_exception If the cycle has activities.
+     */
+    public function delete_cycle(int $cycleid): void {
+        global $DB;
+
+        $cycle = $this->get_cycle($cycleid);
+        if ($this->count_cycle_activities($cycle->id)) {
+            throw new moodle_exception('cyclehasactivities', 'local_cpdtracker');
+        }
+
+        $transaction = $DB->start_delegated_transaction();
+        $DB->delete_records(self::TABLE_CATEGORY, ['cycleid' => $cycle->id]);
+        $DB->delete_records(self::TABLE_CYCLE, ['id' => $cycle->id]);
+        $transaction->allow_commit();
+    }
+
+    /**
+     * Get a category by id.
+     *
+     * @param int $categoryid
+     * @return stdClass
+     */
+    public function get_category(int $categoryid): stdClass {
+        global $DB;
+
+        return $DB->get_record(self::TABLE_CATEGORY, ['id' => $categoryid], '*', MUST_EXIST);
+    }
+
+    /**
+     * Count activities logged in a category.
+     *
+     * @param int $categoryid
+     * @return int
+     */
+    public function count_category_activities(int $categoryid): int {
+        global $DB;
+
+        return $DB->count_records(self::TABLE_ACTIVITY, ['categoryid' => $categoryid]);
+    }
+
+    /**
+     * Count activities per category in a cycle.
+     *
+     * @param int $cycleid
+     * @return int[] Counts keyed by category id. Categories with no activities are missing.
+     */
+    public function count_activities_by_category(int $cycleid): array {
+        global $DB;
+
+        $sql = "SELECT categoryid, COUNT(1)
+                  FROM {local_cpdtracker_activity}
+                 WHERE cycleid = :cycleid
+              GROUP BY categoryid";
+
+        return array_map('intval', $DB->get_records_sql_menu($sql, ['cycleid' => $cycleid]));
+    }
+
+    /**
+     * Check category data before saving.
+     *
+     * @param stdClass $data name, minpoints, maxpoints.
+     * @return string[] Error messages keyed by field name, empty if valid.
+     */
+    public function validate_category(stdClass $data): array {
+        $errors = [];
+
+        $name = trim($data->name ?? '');
+        if ($name === '') {
+            $errors['name'] = get_string('required');
+        } else if (\core_text::strlen($name) > 255) {
+            $errors['name'] = get_string('maximumchars', '', 255);
+        }
+
+        $min = (float)($data->minpoints ?? 0);
+        $max = (float)($data->maxpoints ?? 0);
+        if ($min < 0) {
+            $errors['minpoints'] = get_string('errornegativepoints', 'local_cpdtracker');
+        }
+        if ($max < 0) {
+            $errors['maxpoints'] = get_string('errornegativepoints', 'local_cpdtracker');
+        } else if ($max > 0 && $max < $min) {
+            $errors['maxpoints'] = get_string('errormaxbelowmin', 'local_cpdtracker');
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Create or update a category. New categories go to the end of the cycle's list.
+     *
+     * @param stdClass $data id (0 for new), cycleid, name, description, minpoints, maxpoints.
+     * @return int Category id.
+     * @throws moodle_exception If the data is invalid or the category belongs to another cycle.
+     */
+    public function save_category(stdClass $data): int {
+        global $DB;
+
+        $errors = $this->validate_category($data);
+        if ($errors) {
+            throw new moodle_exception('errorinvaliddata', 'local_cpdtracker', '', implode(' ', $errors));
+        }
+
+        $cycle = $this->get_cycle((int)$data->cycleid);
+        $now = time();
+        $record = (object)[
+            'name' => trim($data->name),
+            'description' => $data->description ?? '',
+            'minpoints' => round((float)$data->minpoints, 2),
+            'maxpoints' => round((float)$data->maxpoints, 2),
+            'timemodified' => $now,
+        ];
+
+        if (!empty($data->id)) {
+            $existing = $this->get_category((int)$data->id);
+            if ((int)$existing->cycleid !== (int)$cycle->id) {
+                throw new moodle_exception('invalidcategory', 'local_cpdtracker');
+            }
+            $record->id = $existing->id;
+            $DB->update_record(self::TABLE_CATEGORY, $record);
+            return (int)$record->id;
+        }
+
+        $maxsort = (int)$DB->get_field_sql(
+            'SELECT COALESCE(MAX(sortorder), 0) FROM {local_cpdtracker_category} WHERE cycleid = :cycleid',
+            ['cycleid' => $cycle->id]
+        );
+        $record->cycleid = $cycle->id;
+        $record->sortorder = $maxsort + 1;
+        $record->timecreated = $now;
+        return (int)$DB->insert_record(self::TABLE_CATEGORY, $record);
+    }
+
+    /**
+     * Delete a category. Refused if members have logged activities in it.
+     *
+     * @param int $categoryid
+     * @throws moodle_exception If the category has activities.
+     */
+    public function delete_category(int $categoryid): void {
+        global $DB;
+
+        $category = $this->get_category($categoryid);
+        if ($this->count_category_activities($category->id)) {
+            throw new moodle_exception('categoryhasactivities', 'local_cpdtracker');
+        }
+        $DB->delete_records(self::TABLE_CATEGORY, ['id' => $category->id]);
+    }
+
+    /**
+     * Move a category one place up or down within its cycle.
+     *
+     * Also renumbers the cycle's sortorder values to 1..n.
+     *
+     * @param int $categoryid
+     * @param bool $up True to move up, false to move down.
+     */
+    public function move_category(int $categoryid, bool $up): void {
+        global $DB;
+
+        $category = $this->get_category($categoryid);
+        $ids = array_keys($this->get_categories($category->cycleid));
+        $pos = array_search((int)$category->id, $ids);
+        $swap = $up ? $pos - 1 : $pos + 1;
+        if ($pos === false || $swap < 0 || $swap >= count($ids)) {
+            return;
+        }
+
+        [$ids[$pos], $ids[$swap]] = [$ids[$swap], $ids[$pos]];
+
+        $transaction = $DB->start_delegated_transaction();
+        foreach ($ids as $index => $id) {
+            $DB->set_field(self::TABLE_CATEGORY, 'sortorder', $index + 1, ['id' => $id]);
+        }
+        $transaction->allow_commit();
+    }
 }
