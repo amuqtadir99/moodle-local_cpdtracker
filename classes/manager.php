@@ -687,4 +687,73 @@ class manager {
         }
         $transaction->allow_commit();
     }
+
+    /**
+     * Get one page of members for the compliance report, with points and status.
+     *
+     * Members are active (not suspended, confirmed) users who hold
+     * local/cpdtracker:logactivity at system level, sorted by surname.
+     *
+     * @param stdClass $cycle
+     * @param int $page Zero-based page number.
+     * @param int $perpage
+     * @return stdClass Object with 'total' (member count) and 'rows', each with
+     *     user, total, categoriesmet, categorycount, activitycount, compliant.
+     */
+    public function get_report_page(stdClass $cycle, int $page, int $perpage): stdClass {
+        global $DB;
+
+        $capjoin = get_with_capability_join(\context_system::instance(), 'local/cpdtracker:logactivity', 'u.id');
+        $namefields = \core_user\fields::for_name()->get_sql('u', true, '', '', false);
+        $from = "FROM {user} u
+                 {$capjoin->joins}
+                 {$namefields->joins}
+                WHERE {$capjoin->wheres}
+                  AND u.suspended = 0
+                  AND u.confirmed = 1";
+        $params = array_merge($capjoin->params, $namefields->params);
+
+        $total = $DB->count_records_sql("SELECT COUNT(1) $from", $params);
+        $users = $DB->get_records_sql(
+            "SELECT u.id, {$namefields->selects} $from ORDER BY u.lastname, u.firstname, u.id",
+            $params,
+            $page * $perpage,
+            $perpage
+        );
+
+        $rows = [];
+        if ($users) {
+            $categories = $this->get_categories($cycle->id);
+
+            // Points and activity counts per member and category, for this page only.
+            [$insql, $inparams] = $DB->get_in_or_equal(array_keys($users), SQL_PARAMS_NAMED);
+            $sums = $DB->get_recordset_sql(
+                "SELECT userid, categoryid, SUM(points) AS points, COUNT(1) AS activities
+                   FROM {local_cpdtracker_activity}
+                  WHERE cycleid = :cycleid AND userid $insql
+               GROUP BY userid, categoryid",
+                ['cycleid' => $cycle->id] + $inparams
+            );
+            $byuser = [];
+            foreach ($sums as $sum) {
+                $byuser[$sum->userid][] = $sum;
+            }
+            $sums->close();
+
+            foreach ($users as $user) {
+                $usersums = $byuser[$user->id] ?? [];
+                $points = $this->calculate_points($categories, $usersums);
+                $rows[] = (object)[
+                    'user' => $user,
+                    'total' => $points->total,
+                    'categoriesmet' => count(array_filter($points->categories, fn($row) => $row->meetsmin)),
+                    'categorycount' => count($categories),
+                    'activitycount' => array_sum(array_map(fn($sum) => (int)$sum->activities, $usersums)),
+                    'compliant' => $this->is_compliant($cycle, $points),
+                ];
+            }
+        }
+
+        return (object)['total' => $total, 'rows' => $rows];
+    }
 }

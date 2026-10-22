@@ -10,6 +10,8 @@ Members log CPD activities against categories within a cycle. Each member sees t
 - Categories per cycle with optional minimum and maximum (cap) points
 - Members log, edit and delete their own activities while a cycle is open
 - My CPD page: points total, per-category breakdown, compliance status
+- Admin screens for cycles and categories
+- Compliance report listing every member's points and status
 - Privacy API support (export and delete of member data)
 
 ## Requirements
@@ -37,6 +39,10 @@ Members log CPD activities against categories within a cycle. Each member sees t
 3. Add categories to the cycle, each with an optional minimum and an optional cap (maximum counted points). Reorder them with the arrows.
 
 Cycles and categories that already have logged activities cannot be deleted, and a cycle's dates cannot be changed to exclude existing activities.
+
+## Compliance report
+
+Site administration > Plugins > Local plugins > CPD Tracker > CPD compliance report lists every member with their points, categories met and compliance status for a chosen cycle, 50 per page, sorted by surname. Members are active users who hold `local/cpdtracker:logactivity`. Requires `local/cpdtracker:viewreport`.
 
 ## Status
 

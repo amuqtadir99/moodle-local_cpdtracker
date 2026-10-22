@@ -17,8 +17,9 @@
 /**
  * Admin tree entries for local_cpdtracker.
  *
- * Adds Site administration > Plugins > Local plugins > CPD Tracker > Manage CPD cycles.
- * Not wrapped in $hassiteconfig so non-admin roles with local/cpdtracker:manage see it too.
+ * Adds a CPD Tracker folder under Site administration > Plugins > Local plugins.
+ * Not wrapped in $hassiteconfig so non-admin roles with the matching
+ * capability see these pages too.
  *
  * @package    local_cpdtracker
  * @copyright  2026 Abdul Muqtadir
@@ -34,4 +35,11 @@ $ADMIN->add('local_cpdtracker', new admin_externalpage(
     get_string('managecycles', 'local_cpdtracker'),
     new moodle_url('/local/cpdtracker/manage.php'),
     'local/cpdtracker:manage'
+));
+
+$ADMIN->add('local_cpdtracker', new admin_externalpage(
+    'local_cpdtracker_report',
+    get_string('compliancereport', 'local_cpdtracker'),
+    new moodle_url('/local/cpdtracker/report.php'),
+    'local/cpdtracker:viewreport'
 ));

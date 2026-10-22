@@ -42,9 +42,18 @@ $cycle = $manager->get_current_cycle();
 
 echo $OUTPUT->header();
 
+// Shortcuts for staff.
+$buttons = '';
 if (has_capability('local/cpdtracker:manage', $context)) {
-    echo $OUTPUT->single_button(new moodle_url('/local/cpdtracker/manage.php'),
+    $buttons .= $OUTPUT->single_button(new moodle_url('/local/cpdtracker/manage.php'),
         get_string('managecycles', 'local_cpdtracker'), 'get');
+}
+if (has_capability('local/cpdtracker:viewreport', $context)) {
+    $buttons .= $OUTPUT->single_button(new moodle_url('/local/cpdtracker/report.php'),
+        get_string('compliancereport', 'local_cpdtracker'), 'get');
+}
+if ($buttons) {
+    echo html_writer::div($buttons, 'd-flex gap-2 mb-3');
 }
 
 if (!$cycle) {
