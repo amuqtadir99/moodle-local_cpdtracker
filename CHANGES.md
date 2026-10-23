@@ -1,5 +1,18 @@
 # Changes
 
+## 1.2.0 (2026102301) - 2026-10-23
+
+- Added activity form fields: administrators add their own questions to the log-activity form (short text, text area, dropdown, checkbox, date and number, optionally required) using Moodle custom fields. Answers show on My CPD, are included in downloads and are covered by the Privacy API.
+- Added hours-based categories: set a points-per-hour rate and members enter hours instead of points.
+- Added "Copy categories from" when creating a cycle.
+- My CPD now shows progress bars for the cycle total and each category minimum, and each category's description as guidance.
+- Members can download their own CPD record (CSV, Excel, ODS, PDF and other enabled formats). Text that would start a spreadsheet formula is neutralised.
+- Changes to activities, cycles and categories are now logged as Moodle events.
+- Activity dates can no longer be in the future, and points, hours and rates have sensible upper limits enforced on the server.
+- All activity rules are now checked in one place for both the form and the API.
+- Added a database index for faster My CPD and compliance report queries.
+- Moodle 4.5 and 5.3 tested: 48 PHPUnit tests.
+
 ## 1.1.0 (2026102300) - 2026-10-23
 
 - Added support for Moodle 5.1, 5.2 and 5.3 LTS. Supported versions are now Moodle 4.5 LTS to 5.3 LTS, on PHP 8.1 to 8.4.

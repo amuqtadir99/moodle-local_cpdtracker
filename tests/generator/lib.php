@@ -70,7 +70,7 @@ class local_cpdtracker_generator extends component_generator_base {
     }
 
     /**
-     * Create a category. Requires cycleid. Defaults to no minimum and no cap, placed last.
+     * Create a category. Requires cycleid. Defaults to no minimum, no cap and direct points entry, placed last.
      *
      * @param array $record Fields to override; must include cycleid.
      * @return stdClass
@@ -90,6 +90,7 @@ class local_cpdtracker_generator extends component_generator_base {
             'description' => '',
             'minpoints' => 0,
             'maxpoints' => 0,
+            'pointsperhour' => 0,
             'sortorder' => $maxsort + 1,
             'timecreated' => $now,
             'timemodified' => $now,
@@ -100,7 +101,7 @@ class local_cpdtracker_generator extends component_generator_base {
     }
 
     /**
-     * Create an activity. Requires userid, cycleid and categoryid. Defaults to 5 points, dated now.
+     * Create an activity. Requires userid, cycleid and categoryid. Defaults to 5 points, no hours, dated now.
      *
      * @param array $record Fields to override; must include userid, cycleid and categoryid.
      * @return stdClass
@@ -121,6 +122,7 @@ class local_cpdtracker_generator extends component_generator_base {
             'description' => '',
             'activitydate' => $now,
             'points' => 5,
+            'hours' => null,
             'timecreated' => $now,
             'timemodified' => $now,
         ], $record);

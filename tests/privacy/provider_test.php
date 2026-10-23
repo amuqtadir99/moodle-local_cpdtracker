@@ -49,6 +49,7 @@ final class provider_test extends provider_testcase {
     protected function setUp(): void {
         parent::setUp();
         $this->resetAfterTest();
+        \local_cpdtracker\customfield\activity_handler::reset_caches();
 
         /** @var \local_cpdtracker_generator $generator */
         $generator = $this->getDataGenerator()->get_plugin_generator('local_cpdtracker');
@@ -85,12 +86,70 @@ final class provider_test extends provider_testcase {
         $collection = provider::get_metadata(new collection('local_cpdtracker'));
         $items = $collection->get_collection();
 
-        $this->assertCount(1, $items);
-        $table = reset($items);
+        $this->assertCount(2, $items);
+        [$table, $link] = array_values($items);
         $this->assertSame('local_cpdtracker_activity', $table->get_name());
         $this->assertArrayHasKey('userid', $table->get_privacy_fields());
         $this->assertArrayHasKey('title', $table->get_privacy_fields());
         $this->assertArrayHasKey('points', $table->get_privacy_fields());
+        $this->assertArrayHasKey('hours', $table->get_privacy_fields());
+        $this->assertSame('core_customfield', $link->get_name());
+    }
+
+    /**
+     * Give user1 an activity with an answer to a custom activity field.
+     *
+     * @return int The activity id.
+     */
+    private function create_activity_with_custom_field(): int {
+        global $DB;
+
+        /** @var \core_customfield_generator $cfgenerator */
+        $cfgenerator = $this->getDataGenerator()->get_plugin_generator('core_customfield');
+        $category = $cfgenerator->create_category(['component' => 'local_cpdtracker', 'area' => 'activity', 'itemid' => 0]);
+        $cfgenerator->create_field(['categoryid' => $category->get('id'), 'type' => 'text', 'shortname' => 'provider',
+            'name' => 'Provider']);
+
+        $this->setUser($this->user1);
+        $activity = $DB->get_records('local_cpdtracker_activity', ['userid' => $this->user1->id], 'id', '*', 0, 1);
+        $activity = reset($activity);
+        $manager = new \local_cpdtracker\manager();
+        return $manager->save_activity((object)[
+            'id' => $activity->id,
+            'cycleid' => $activity->cycleid,
+            'categoryid' => $activity->categoryid,
+            'title' => $activity->title,
+            'activitydate' => $activity->activitydate,
+            'points' => $activity->points,
+            'customfield_provider' => 'ACME Training',
+        ], $this->user1->id);
+    }
+
+    public function test_export_includes_custom_fields(): void {
+        global $DB;
+        $activityid = $this->create_activity_with_custom_field();
+        $context = context_user::instance($this->user1->id);
+
+        $this->export_context_data_for_user($this->user1->id, $context, 'local_cpdtracker');
+
+        $dataid = $DB->get_field('customfield_data', 'id', ['instanceid' => $activityid], MUST_EXIST);
+        $exported = writer::with_context($context)->get_data([
+            get_string('pluginname', 'local_cpdtracker'),
+            get_string('activityformfields', 'local_cpdtracker'),
+            $dataid,
+        ]);
+        $this->assertStringContainsString('ACME Training', json_encode($exported));
+    }
+
+    public function test_delete_removes_custom_fields(): void {
+        global $DB;
+        $activityid = $this->create_activity_with_custom_field();
+        $this->assertTrue($DB->record_exists('customfield_data', ['instanceid' => $activityid]));
+
+        provider::delete_data_for_all_users_in_context(context_user::instance($this->user1->id));
+
+        $this->assertFalse($DB->record_exists('customfield_data', ['instanceid' => $activityid]));
+        $this->assertSame(0, $this->count_activities($this->user1));
     }
 
     public function test_get_contexts_for_userid(): void {

@@ -23,6 +23,8 @@
  */
 
 use core\output\notification;
+use local_cpdtracker\customfield\activity_handler;
+use local_cpdtracker\output\helper;
 
 require(__DIR__ . '/../../config.php');
 
@@ -78,6 +80,10 @@ echo html_writer::tag('p', get_string('pointstotal', 'local_cpdtracker', (object
     'total' => format_float($summary->total, 2),
     'required' => format_float($cycle->requiredpoints, 2),
 ]));
+echo html_writer::div(
+    helper::progress_bar($summary->total, (float)$cycle->requiredpoints, get_string('overallprogress', 'local_cpdtracker')),
+    'mb-3'
+);
 
 if ($summary->compliant) {
     echo $OUTPUT->notification(get_string('compliant', 'local_cpdtracker'), notification::NOTIFY_SUCCESS);
@@ -85,7 +91,7 @@ if ($summary->compliant) {
     echo $OUTPUT->notification(get_string('notcompliant', 'local_cpdtracker'), notification::NOTIFY_WARNING);
 }
 
-// Category breakdown.
+// Category breakdown, with each category's guidance and progress towards its minimum.
 if ($summary->categories) {
     $table = new html_table();
     $table->head = [
@@ -94,16 +100,33 @@ if ($summary->categories) {
         get_string('maxpoints', 'local_cpdtracker'),
         get_string('pointslogged', 'local_cpdtracker'),
         get_string('pointscounted', 'local_cpdtracker'),
+        get_string('progress', 'local_cpdtracker'),
         get_string('status', 'local_cpdtracker'),
     ];
     foreach ($summary->categories as $row) {
-        $max = (float)$row->category->maxpoints;
+        $category = $row->category;
+        $max = (float)$category->maxpoints;
+        $min = (float)$category->minpoints;
+        $name = format_string($category->name);
+
+        $details = html_writer::tag('strong', $name);
+        if ($manager->is_hourly($category)) {
+            $details .= html_writer::div(
+                get_string('pointsperhourrate', 'local_cpdtracker', format_float($category->pointsperhour, 2)),
+                'small text-muted'
+            );
+        }
+        if (trim((string)$category->description) !== '') {
+            $details .= html_writer::div(format_text($category->description, FORMAT_PLAIN, ['context' => $context]), 'small');
+        }
+
         $table->data[] = [
-            format_string($row->category->name),
-            format_float($row->category->minpoints, 2),
+            $details,
+            format_float($min, 2),
             $max > 0 ? format_float($max, 2) : get_string('nocap', 'local_cpdtracker'),
             format_float($row->raw, 2),
             format_float($row->counted, 2),
+            $min > 0 ? helper::progress_bar($row->counted, $min, $name) : get_string('nominimum', 'local_cpdtracker'),
             get_string($row->meetsmin ? 'met' : 'notmet', 'local_cpdtracker'),
         ];
     }
@@ -129,21 +152,31 @@ if (!$summary->activities) {
         get_string('activitydate', 'local_cpdtracker'),
         get_string('title', 'local_cpdtracker'),
         get_string('category', 'local_cpdtracker'),
+        get_string('hours', 'local_cpdtracker'),
         get_string('points', 'local_cpdtracker'),
     ];
     if ($cycleopen) {
         $table->head[] = get_string('actions');
     }
 
+    // Custom field answers for every activity on the page, in one query.
+    $handler = activity_handler::create();
+    $fielddata = $handler->get_instances_data(array_keys($summary->activities));
+
     $dateformat = get_string('strftimedate', 'langconfig');
     foreach ($summary->activities as $activity) {
         $categoryname = isset($summary->categories[$activity->categoryid])
             ? format_string($summary->categories[$activity->categoryid]->category->name)
             : '';
+        $title = format_string($activity->title);
+        if (!empty($fielddata[$activity->id])) {
+            $title .= html_writer::div($handler->display_custom_fields_data($fielddata[$activity->id]), 'small text-muted');
+        }
         $row = [
             userdate($activity->activitydate, $dateformat),
-            format_string($activity->title),
+            $title,
             $categoryname,
+            $activity->hours === null ? '' : format_float($activity->hours, 2),
             format_float($activity->points, 2),
         ];
         if ($cycleopen) {
@@ -158,6 +191,13 @@ if (!$summary->activities) {
         $table->data[] = $row;
     }
     echo html_writer::table($table);
+
+    echo $OUTPUT->download_dataformat_selector(
+        get_string('downloadrecord', 'local_cpdtracker'),
+        new moodle_url('/local/cpdtracker/download.php'),
+        'dataformat',
+        ['cycleid' => $cycle->id]
+    );
 }
 
 echo $OUTPUT->footer();

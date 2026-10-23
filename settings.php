@@ -38,6 +38,13 @@ $ADMIN->add('local_cpdtracker', new admin_externalpage(
 ));
 
 $ADMIN->add('local_cpdtracker', new admin_externalpage(
+    'local_cpdtracker_customfields',
+    get_string('activityformfields', 'local_cpdtracker'),
+    new moodle_url('/local/cpdtracker/customfields.php'),
+    'local/cpdtracker:manage'
+));
+
+$ADMIN->add('local_cpdtracker', new admin_externalpage(
     'local_cpdtracker_report',
     get_string('compliancereport', 'local_cpdtracker'),
     new moodle_url('/local/cpdtracker/report.php'),

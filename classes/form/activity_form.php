@@ -16,6 +16,9 @@
 
 namespace local_cpdtracker\form;
 
+use local_cpdtracker\customfield\activity_handler;
+use local_cpdtracker\manager;
+
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->libdir . '/formslib.php');
@@ -23,7 +26,8 @@ require_once($CFG->libdir . '/formslib.php');
 /**
  * Form for logging or editing a CPD activity.
  *
- * Custom data: 'cycle' (cycle record) and 'categories' (category records keyed by id).
+ * Custom data: 'cycle' (cycle record), 'categories' (category records keyed by id)
+ * and 'id' (activity id, 0 for a new activity). Includes the site's custom activity fields.
  *
  * @package    local_cpdtracker
  * @copyright  2026 | WITWEB SOLUTIONS | www.witweb.com.au | Developer: Abdul Muqtadir | Github: amuqtadir99
@@ -44,9 +48,22 @@ class activity_form extends \moodleform {
         $mform->addElement('hidden', 'cycleid', $cycle->id);
         $mform->setType('cycleid', PARAM_INT);
 
+        $manager = new manager();
         $options = [];
+        $hourly = [];
+        $direct = [];
         foreach ($categories as $category) {
             $options[$category->id] = format_string($category->name);
+            if ($manager->is_hourly($category)) {
+                $hourly[] = $category->id;
+                $options[$category->id] .= ' (' . get_string(
+                    'pointsperhourrate',
+                    'local_cpdtracker',
+                    format_float($category->pointsperhour, 2)
+                ) . ')';
+            } else {
+                $direct[] = $category->id;
+            }
         }
         $mform->addElement('select', 'categoryid', get_string('category', 'local_cpdtracker'), $options);
         $mform->addRule('categoryid', null, 'required', null, 'client');
@@ -67,14 +84,34 @@ class activity_form extends \moodleform {
         $mform->addElement('date_selector', 'activitydate', get_string('activitydate', 'local_cpdtracker'));
         $mform->setDefault('activitydate', time());
 
+        // Hourly categories take hours (points are calculated); all others take points.
+        // No client-side "required" rule: a hidden field must not block the form. The server checks.
         $mform->addElement('float', 'points', get_string('points', 'local_cpdtracker'));
-        $mform->addRule('points', null, 'required', null, 'client');
+        $mform->addElement('float', 'hours', get_string('hours', 'local_cpdtracker'));
+        $mform->addHelpButton('hours', 'hours', 'local_cpdtracker');
+        if ($hourly) {
+            $mform->hideIf('points', 'categoryid', 'in', implode('|', $hourly));
+        }
+        if ($direct) {
+            $mform->hideIf('hours', 'categoryid', 'in', implode('|', $direct));
+        }
+
+        activity_handler::create()->instance_form_definition($mform, (int)($this->_customdata['id'] ?? 0));
 
         $this->add_action_buttons();
     }
 
     /**
-     * Server-side validation.
+     * Load custom field values once the form has its data.
+     */
+    public function definition_after_data() {
+        parent::definition_after_data();
+        $id = (int)$this->_form->getElementValue('id');
+        activity_handler::create()->instance_form_definition_after_data($this->_form, $id);
+    }
+
+    /**
+     * Server-side validation, shared with manager::save_activity().
      *
      * @param array $data
      * @param array $files
@@ -82,26 +119,12 @@ class activity_form extends \moodleform {
      */
     public function validation($data, $files) {
         $errors = parent::validation($data, $files);
-        $cycle = $this->_customdata['cycle'];
-        $categories = $this->_customdata['categories'];
+        $manager = new manager();
 
-        if (!array_key_exists($data['categoryid'], $categories)) {
-            $errors['categoryid'] = get_string('invalidcategory', 'local_cpdtracker');
-        }
-
-        if ((float)$data['points'] <= 0) {
-            $errors['points'] = get_string('errorpointspositive', 'local_cpdtracker');
-        }
-
-        if ($data['activitydate'] < $cycle->startdate || $data['activitydate'] > $cycle->enddate) {
-            $manager = new \local_cpdtracker\manager();
-            $errors['activitydate'] = get_string(
-                'errordateoutsidecycle',
-                'local_cpdtracker',
-                $manager->format_cycle_dates($cycle)
-            );
-        }
-
-        return $errors;
+        return array_merge(
+            $errors,
+            $manager->validate_activity((object)$data),
+            activity_handler::create()->instance_form_validation($data, $files)
+        );
     }
 }

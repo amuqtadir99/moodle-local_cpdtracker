@@ -18,6 +18,7 @@ namespace local_cpdtracker\privacy;
 
 use context;
 use context_user;
+use core_customfield\privacy\provider as customfield_provider;
 use core_privacy\local\metadata\collection;
 use core_privacy\local\request\approved_contextlist;
 use core_privacy\local\request\approved_userlist;
@@ -29,8 +30,9 @@ use core_privacy\local\request\writer;
 /**
  * Privacy provider for local_cpdtracker.
  *
- * Activities are personal data owned by the member, so they live in the
- * member's user context. Cycles and categories hold no personal data.
+ * Activities, and the answers to the site's custom activity fields, are personal
+ * data owned by the member, so they live in the member's user context.
+ * Cycles and categories hold no personal data.
  *
  * @package    local_cpdtracker
  * @copyright  2026 | WITWEB SOLUTIONS | www.witweb.com.au | Developer: Abdul Muqtadir | Github: amuqtadir99
@@ -55,15 +57,30 @@ class provider implements
             'description' => 'privacy:metadata:activity:description',
             'activitydate' => 'privacy:metadata:activity:activitydate',
             'points' => 'privacy:metadata:activity:points',
+            'hours' => 'privacy:metadata:activity:hours',
             'timecreated' => 'privacy:metadata:activity:timecreated',
             'timemodified' => 'privacy:metadata:activity:timemodified',
         ], 'privacy:metadata:activity');
+
+        $collection->add_subsystem_link('core_customfield', [], 'privacy:metadata:customfields');
 
         return $collection;
     }
 
     /**
+     * SQL selecting the ids of a user's activities, for the custom field helpers.
+     *
+     * @return string
+     */
+    protected static function user_activities_sql(): string {
+        return 'IN (SELECT id FROM {local_cpdtracker_activity} WHERE userid = :cfuserid)';
+    }
+
+    /**
      * Get the contexts holding data for a user.
+     *
+     * Custom field answers only exist for existing activities and use the same
+     * user context, so this also covers them.
      *
      * @param int $userid
      * @return contextlist
@@ -95,7 +112,7 @@ class provider implements
     }
 
     /**
-     * Export a user's activities.
+     * Export a user's activities and their custom field answers.
      *
      * @param approved_contextlist $contextlist
      */
@@ -107,6 +124,16 @@ class provider implements
             if (!$context instanceof context_user || (int)$context->instanceid !== $userid) {
                 continue;
             }
+
+            customfield_provider::export_customfields_data(
+                $contextlist,
+                'local_cpdtracker',
+                'activity',
+                '= 0',
+                self::user_activities_sql(),
+                ['cfuserid' => $userid],
+                [get_string('pluginname', 'local_cpdtracker'), get_string('activityformfields', 'local_cpdtracker')]
+            );
 
             $sql = "SELECT a.*, cy.name AS cyclename, ca.name AS categoryname
                       FROM {local_cpdtracker_activity} a
@@ -128,6 +155,7 @@ class provider implements
                     'description' => $record->description,
                     'activitydate' => transform::date($record->activitydate),
                     'points' => (float)$record->points,
+                    'hours' => $record->hours === null ? null : (float)$record->hours,
                     'timecreated' => transform::datetime($record->timecreated),
                     'timemodified' => transform::datetime($record->timemodified),
                 ];
@@ -146,11 +174,21 @@ class provider implements
      * @param context $context
      */
     public static function delete_data_for_all_users_in_context(context $context) {
+        if ($context instanceof context_user) {
+            self::delete_user_data($context);
+        }
+    }
+
+    /**
+     * Delete a user's activities and custom field answers.
+     *
+     * @param context_user $context The user's context.
+     */
+    protected static function delete_user_data(context_user $context): void {
         global $DB;
 
-        if ($context instanceof context_user) {
-            $DB->delete_records('local_cpdtracker_activity', ['userid' => $context->instanceid]);
-        }
+        customfield_provider::delete_customfields_data_for_context('local_cpdtracker', 'activity', $context);
+        $DB->delete_records('local_cpdtracker_activity', ['userid' => $context->instanceid]);
     }
 
     /**
@@ -159,12 +197,10 @@ class provider implements
      * @param approved_contextlist $contextlist
      */
     public static function delete_data_for_user(approved_contextlist $contextlist) {
-        global $DB;
-
         $userid = (int)$contextlist->get_user()->id;
         foreach ($contextlist->get_contexts() as $context) {
             if ($context instanceof context_user && (int)$context->instanceid === $userid) {
-                $DB->delete_records('local_cpdtracker_activity', ['userid' => $userid]);
+                self::delete_user_data($context);
             }
         }
     }
@@ -175,14 +211,12 @@ class provider implements
      * @param approved_userlist $userlist
      */
     public static function delete_data_for_users(approved_userlist $userlist) {
-        global $DB;
-
         $context = $userlist->get_context();
         if (!$context instanceof context_user) {
             return;
         }
         if (in_array((int)$context->instanceid, array_map('intval', $userlist->get_userids()), true)) {
-            $DB->delete_records('local_cpdtracker_activity', ['userid' => $context->instanceid]);
+            self::delete_user_data($context);
         }
     }
 }

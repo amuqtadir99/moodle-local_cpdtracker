@@ -40,10 +40,10 @@ $returnurl = new moodle_url('/local/cpdtracker/index.php');
 
 if ($id) {
     $activity = $manager->get_activity($id);
-    if (!$manager->can_edit_activity($activity, (int)$USER->id)) {
+    $cycle = $manager->get_cycle($activity->cycleid);
+    if (!$manager->can_edit_activity($activity, (int)$USER->id, $cycle)) {
         throw new moodle_exception('cannoteditactivity', 'local_cpdtracker', $returnurl);
     }
-    $cycle = $manager->get_cycle($activity->cycleid);
 } else {
     $activity = null;
     $cycle = $manager->get_current_cycle();
@@ -91,6 +91,7 @@ if (!$categories) {
 $form = new \local_cpdtracker\form\activity_form($PAGE->url, [
     'cycle' => $cycle,
     'categories' => $categories,
+    'id' => $id,
 ]);
 
 if ($form->is_cancelled()) {
@@ -98,11 +99,13 @@ if ($form->is_cancelled()) {
 }
 
 if ($data = $form->get_data()) {
+    // Saves the activity and its custom field answers together.
     $manager->save_activity($data, (int)$USER->id);
     redirect($returnurl, get_string('activitysaved', 'local_cpdtracker'), null, notification::NOTIFY_SUCCESS);
 }
 
 if ($activity) {
+    \local_cpdtracker\customfield\activity_handler::create()->instance_form_before_set_data($activity);
     $form->set_data($activity);
 }
 

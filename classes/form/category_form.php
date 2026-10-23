@@ -57,6 +57,10 @@ class category_form extends \moodleform {
         $mform->setDefault('maxpoints', 0);
         $mform->addHelpButton('maxpoints', 'maxpoints', 'local_cpdtracker');
 
+        $mform->addElement('float', 'pointsperhour', get_string('pointsperhour', 'local_cpdtracker'));
+        $mform->setDefault('pointsperhour', 0);
+        $mform->addHelpButton('pointsperhour', 'pointsperhour', 'local_cpdtracker');
+
         $this->add_action_buttons();
     }
 

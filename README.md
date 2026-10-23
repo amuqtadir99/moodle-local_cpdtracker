@@ -18,12 +18,17 @@ Component: `local_cpdtracker`
 ## Highlights
 
 - **CPD cycles.** Define the period members must earn points in, such as a calendar or membership year, and the total points required.
-- **Categories with minimums and caps.** Require a minimum number of points in a category (for example, 10 points of structured learning) and cap how many points a category can contribute (for example, no more than 10 points of self-directed reading).
-- **Member self-service.** Members log, edit and delete their own activities while a cycle is open, with the date, points and a description.
-- **Instant compliance status.** The My CPD page shows each member's total, a per-category breakdown and a clear compliant or not-yet-compliant status.
+- **Flexible categories.** Use as many categories as you need. Require a minimum number of points in a category (for example, 10 points of structured learning) and cap how many points a category can contribute (for example, no more than 10 points of self-directed reading).
+- **Hours or points.** Let members enter hours for a category and convert them to points at your rate, for example 1.5 points per hour, or keep direct points entry.
+- **Your own activity form.** Add questions to the log-activity form, such as provider, learning outcomes, cost or a reflection, using short text, paragraph, dropdown, checkbox, date and number fields. Mark any question as required.
+- **Quick yearly setup.** Start a new cycle with a copy of an earlier cycle's categories.
+- **Member self-service.** Members log, edit and delete their own activities while a cycle is open.
+- **Clear progress.** The My CPD page shows each member's total with progress bars, a per-category breakdown with your guidance for each category, and a clear compliant or not-yet-compliant status.
+- **Download my CPD record.** Members download their own record as CSV, Excel, ODS, PDF and other formats enabled on your site, including their answers to your questions.
 - **Compliance report.** Staff see every member's points and status for any cycle, paged and sorted by surname.
-- **Data integrity built in.** Cycles cannot overlap, activities must fall inside their cycle, and cycles or categories that hold member records cannot be deleted.
-- **Privacy ready.** Full Moodle Privacy API support, so member data is included in data exports and removed on deletion requests.
+- **Data integrity built in.** Cycles cannot overlap, activities must fall inside their cycle and cannot be future-dated, and cycles or categories that hold member records cannot be deleted.
+- **Audit trail.** Changes to activities, cycles and categories are recorded in Moodle's logs.
+- **Privacy ready.** Full Moodle Privacy API support, so member data, including answers to your questions, is included in data exports and removed on deletion requests.
 
 ## How compliance is calculated
 
@@ -33,6 +38,8 @@ A member is **compliant** for a cycle when both of these are true:
 2. Every category's **minimum** is met.
 
 Counted points are the points logged in each category, limited by that category's cap. Points logged above a cap are kept on record but do not count towards the total.
+
+In a category that converts hours, an activity's points are its hours multiplied by the category's points-per-hour rate, worked out when the activity is saved.
 
 **Example.** A cycle requires 30 points. *Structured learning* has a minimum of 10 points. *Self-directed* has a cap of 10 points.
 
@@ -104,27 +111,40 @@ Go to **Site administration > Plugins > Local plugins > CPD Tracker > Manage CPD
 
 A cycle runs from the start of its first day to the end of its last day. Cycles cannot overlap, so each member always has one current cycle.
 
+To reuse last year's structure, choose a cycle in **Copy categories from**. The new cycle starts with a copy of every category, including minimums, caps and points-per-hour rates, which you can then adjust.
+
 ### 2. Add categories
 
 After saving a new cycle you are taken straight to its categories. For each category, set:
 
+- **Description**: guidance shown to members on My CPD, for example what counts in this category.
 - **Minimum points**: the points a member must earn in this category to be compliant. Use 0 for no minimum.
 - **Maximum points**: the most points from this category that count towards the total. Use 0 for no cap.
+- **Points per hour**: set a rate to let members enter hours instead of points. Use 0 for members to enter points directly. Changing the rate affects activities logged or edited afterwards; points already saved are not recalculated.
 
 Use the arrows to set the order members see the categories in.
 
-### 3. Let members log activities
+### 3. Design the activity form (optional)
+
+Go to **Site administration > Plugins > Local plugins > CPD Tracker > Activity form fields** to add your own questions to the log-activity form. Choose from short text, text area, dropdown menu, checkbox, date and number fields, group them into sections, mark them as required and set their order.
+
+Answers are saved with each activity, shown under the activity on My CPD and included in the member's downloaded record.
+
+### 4. Let members log activities
 
 Members open **My CPD** from their profile page, or go to `/local/cpdtracker/index.php`, and select **Log activity**. Each activity records:
 
 - category
 - title and description
-- activity date, which must fall inside the cycle
-- points
+- activity date, which must fall inside the cycle and cannot be in the future
+- points, or hours for categories that convert hours to points
+- answers to any questions you added
 
 Activities can be edited or deleted while the cycle is open. Once a cycle ends, its records are locked.
 
-### 4. Monitor compliance
+My CPD shows progress towards the cycle total and each category minimum. Members can download their record for the cycle from the bottom of the page.
+
+### 5. Monitor compliance
 
 Go to **Site administration > Plugins > Local plugins > CPD Tracker > CPD compliance report**, choose a cycle and review each member's counted points, categories met, number of activities and compliance status.
 
@@ -133,7 +153,7 @@ Go to **Site administration > Plugins > Local plugins > CPD Tracker > CPD compli
 | Capability | Default role | Allows |
 |---|---|---|
 | `local/cpdtracker:logactivity` | Authenticated user | Logging, editing and deleting own activities, and viewing own compliance |
-| `local/cpdtracker:manage` | Manager | Creating, editing and deleting cycles and categories |
+| `local/cpdtracker:manage` | Manager | Creating, editing and deleting cycles and categories, and designing the activity form |
 | `local/cpdtracker:viewreport` | Manager | Viewing every member's points and compliance status |
 
 Users with the `manage` or `viewreport` capability also see shortcuts to those screens on their My CPD page.
@@ -149,18 +169,22 @@ To keep CPD records reliable, the plugin enforces these rules:
 - Cycles and categories that contain logged activities cannot be deleted.
 - A category's cap must be 0 (no cap) or at least its minimum.
 - Members can only add, change or delete activities while a cycle is open, and only their own.
+- Activity dates cannot be in the future.
+- To keep numbers realistic, one activity can record at most 10,000 points or hours, required points, minimums and caps can be at most 100,000, and a points-per-hour rate at most 1,000.
 
 ## Privacy
 
-CPD Tracker stores the activities members log: category, title, description, date and points. These records belong to the member and are stored in their user context.
+CPD Tracker stores the activities members log: category, title, description, date, points, hours and answers to any questions you added. These records belong to the member and are stored in their user context.
 
-The plugin implements the Moodle Privacy API, so member activities are:
+The plugin implements the Moodle Privacy API, so member activities and answers are:
 
 - listed in the site's data registry
 - included when a member's data is exported
 - removed when a member's data is deleted
 
-Cycles and categories are site configuration and contain no personal data. The plugin does not send data outside your Moodle site.
+Cycles, categories and the activity form are site configuration and contain no personal data. The plugin does not send data outside your Moodle site.
+
+Downloaded records are protected against spreadsheet formula injection: text that would start a formula is prefixed so spreadsheets show it as plain text.
 
 ## For developers
 
@@ -169,14 +193,19 @@ Cycles and categories are site configuration and contain no personal data. The p
 ```
 cpdtracker/
 ├── classes/
-│   ├── manager.php            Business logic: points, compliance, cycles, categories, report
+│   ├── manager.php            Business logic: points, hours, compliance, cycles, categories, report, export
+│   ├── customfield/           Custom fields handler for the activity form
+│   ├── event/                 Events for activities, cycles and categories
 │   ├── form/                  Activity, cycle and category forms
+│   ├── output/                Progress bar helper
 │   └── privacy/provider.php   Privacy API implementation
-├── db/                        Database schema and capabilities
+├── db/                        Schema, upgrade and uninstall steps, capabilities
 ├── lang/en/                   Language strings
 ├── tests/                     PHPUnit tests and test data generator
 ├── index.php                  My CPD
 ├── edit.php                   Log, edit or delete an activity
+├── download.php               Download a member's own CPD record
+├── customfields.php           Design the activity form
 ├── manage.php                 List and delete cycles
 ├── editcycle.php              Add or edit a cycle
 ├── categories.php             List, reorder and delete a cycle's categories

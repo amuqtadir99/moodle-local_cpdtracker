@@ -36,6 +36,8 @@ final class manager_test extends advanced_testcase {
 
     protected function setUp(): void {
         parent::setUp();
+        // The custom field handler is shared and caches fields and owners; start each test clean.
+        customfield\activity_handler::reset_caches();
         $this->manager = new manager();
     }
 
@@ -339,10 +341,295 @@ final class manager_test extends advanced_testcase {
             'categoryid' => $closedcategory->id,
             'activitydate' => $now - 60 * DAYSECS,
         ]));
-        $this->assert_moodle_exception('invalidcategory', $save(['categoryid' => $closedcategory->id]));
-        $this->assert_moodle_exception('errorpointspositive', $save(['points' => 0]));
-        $this->assert_moodle_exception('errorpointspositive', $save(['points' => -2]));
-        $this->assert_moodle_exception('errordateoutsidecycle', $save(['activitydate' => $now + 60 * DAYSECS]));
+        // Every other rule comes from validate_activity(), reported as one invalid-data error.
+        $this->assert_moodle_exception('errorinvaliddata', $save(['categoryid' => $closedcategory->id]));
+        $this->assert_moodle_exception('errorinvaliddata', $save(['points' => 0]));
+        $this->assert_moodle_exception('errorinvaliddata', $save(['points' => -2]));
+        $this->assert_moodle_exception('errorinvaliddata', $save(['activitydate' => $now + 60 * DAYSECS]));
+    }
+
+    public function test_validate_activity(): void {
+        $this->resetAfterTest();
+        $now = time();
+        $cycle = $this->generator()->create_cycle();
+        $direct = $this->generator()->create_category(['cycleid' => $cycle->id]);
+        $hourly = $this->generator()->create_category(['cycleid' => $cycle->id, 'pointsperhour' => 2]);
+        $other = $this->generator()->create_category(['cycleid' => $this->generator()->create_cycle()->id]);
+
+        $valid = [
+            'cycleid' => $cycle->id,
+            'categoryid' => $direct->id,
+            'title' => 'Course',
+            'activitydate' => $now - DAYSECS,
+            'points' => 5,
+        ];
+        $validate = fn(array $changes) => $this->manager->validate_activity((object)array_merge($valid, $changes), $now);
+
+        $this->assertSame([], $validate([]));
+        $this->assertSame([], $validate(['activitydate' => $now]));
+        $this->assertArrayHasKey('categoryid', $validate(['categoryid' => $other->id]));
+        $this->assertArrayHasKey('title', $validate(['title' => ' ']));
+        $this->assertArrayHasKey('title', $validate(['title' => str_repeat('x', 256)]));
+        $this->assertArrayHasKey('activitydate', $validate(['activitydate' => $now + HOURSECS]));
+        $this->assertArrayHasKey('activitydate', $validate(['activitydate' => $cycle->startdate - 1]));
+        $this->assertArrayHasKey('points', $validate(['points' => 0]));
+        $this->assertArrayHasKey('points', $validate(['points' => manager::MAX_ACTIVITY_AMOUNT + 1]));
+        $this->assertSame([], $validate(['points' => manager::MAX_ACTIVITY_AMOUNT]));
+
+        // Hourly categories check hours instead of points.
+        $this->assertSame([], $validate(['categoryid' => $hourly->id, 'points' => 0, 'hours' => 1.5]));
+        $this->assertArrayHasKey('hours', $validate(['categoryid' => $hourly->id, 'hours' => 0]));
+        $this->assertArrayHasKey('hours', $validate(['categoryid' => $hourly->id, 'hours' => manager::MAX_ACTIVITY_AMOUNT + 1]));
+    }
+
+    public function test_save_activity_converts_hours_to_points(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $cycle = $this->generator()->create_cycle();
+        $hourly = $this->generator()->create_category(['cycleid' => $cycle->id, 'pointsperhour' => 1.5]);
+        $direct = $this->generator()->create_category(['cycleid' => $cycle->id]);
+        $base = ['id' => 0, 'cycleid' => $cycle->id, 'title' => 'Course', 'activitydate' => time()];
+
+        // Hourly: points come from hours at the rate; submitted points are ignored.
+        $hourlydata = (object)($base + ['categoryid' => $hourly->id, 'hours' => 2.5, 'points' => 99]);
+        $id = $this->manager->save_activity($hourlydata, $user->id);
+        $record = $DB->get_record('local_cpdtracker_activity', ['id' => $id]);
+        $this->assertEquals(2.5, (float)$record->hours);
+        $this->assertEquals(3.75, (float)$record->points);
+
+        // Direct: points as entered, no hours stored.
+        $directdata = (object)($base + ['categoryid' => $direct->id, 'points' => 4, 'hours' => 7]);
+        $id2 = $this->manager->save_activity($directdata, $user->id);
+        $record2 = $DB->get_record('local_cpdtracker_activity', ['id' => $id2]);
+        $this->assertNull($record2->hours);
+        $this->assertEquals(4, (float)$record2->points);
+
+        // Changing the rate later does not rewrite points already saved.
+        $this->manager->save_category((object)[
+            'id' => $hourly->id,
+            'cycleid' => $cycle->id,
+            'name' => $hourly->name,
+            'minpoints' => 0,
+            'maxpoints' => 0,
+            'pointsperhour' => 3,
+        ]);
+        $this->assertEquals(3.75, (float)$DB->get_field('local_cpdtracker_activity', 'points', ['id' => $id]));
+    }
+
+    public function test_copy_categories(): void {
+        $this->resetAfterTest();
+        $now = time();
+        $source = $this->generator()->create_cycle(['startdate' => $now - 400 * DAYSECS, 'enddate' => $now - 40 * DAYSECS]);
+        $this->generator()->create_category([
+            'cycleid' => $source->id,
+            'name' => 'Structured',
+            'description' => 'Courses and conferences',
+            'minpoints' => 10,
+        ]);
+        $this->generator()->create_category([
+            'cycleid' => $source->id,
+            'name' => 'Reading',
+            'maxpoints' => 5,
+            'pointsperhour' => 0.5,
+        ]);
+
+        $newid = $this->manager->save_cycle((object)[
+            'id' => 0,
+            'name' => 'Next year',
+            'startdate' => $now + 10 * DAYSECS,
+            'enddate' => $now + 300 * DAYSECS,
+            'requiredpoints' => 20,
+            'copyfrom' => $source->id,
+        ]);
+
+        $copies = array_values($this->manager->get_categories($newid));
+        $this->assertCount(2, $copies);
+        $this->assertSame('Structured', $copies[0]->name);
+        $this->assertSame('Courses and conferences', $copies[0]->description);
+        $this->assertEquals(10, (float)$copies[0]->minpoints);
+        $this->assertSame('Reading', $copies[1]->name);
+        $this->assertEquals(5, (float)$copies[1]->maxpoints);
+        $this->assertEquals(0.5, (float)$copies[1]->pointsperhour);
+        $this->assertCount(2, $this->manager->get_categories($source->id));
+    }
+
+    public function test_numeric_limits(): void {
+        $this->resetAfterTest();
+        $cycle = (object)['id' => 0, 'name' => 'Big', 'startdate' => time() + 900 * DAYSECS,
+            'enddate' => time() + 1000 * DAYSECS, 'requiredpoints' => manager::MAX_POINTS_SETTING + 1];
+        $this->assertArrayHasKey('requiredpoints', $this->manager->validate_cycle($cycle));
+
+        $category = ['name' => 'Rate', 'minpoints' => 0, 'maxpoints' => 0, 'pointsperhour' => 0];
+        $validate = fn(array $changes) => $this->manager->validate_category((object)array_merge($category, $changes));
+        $this->assertSame([], $validate(['pointsperhour' => manager::MAX_POINTS_PER_HOUR]));
+        $this->assertArrayHasKey('pointsperhour', $validate(['pointsperhour' => manager::MAX_POINTS_PER_HOUR + 1]));
+        $this->assertArrayHasKey('pointsperhour', $validate(['pointsperhour' => -1]));
+        $this->assertArrayHasKey('minpoints', $validate(['minpoints' => manager::MAX_POINTS_SETTING + 1]));
+        $this->assertArrayHasKey('maxpoints', $validate(['maxpoints' => manager::MAX_POINTS_SETTING + 1]));
+    }
+
+    public function test_events(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+        $sink = $this->redirectEvents();
+
+        $cycleid = $this->manager->save_cycle((object)['id' => 0, 'name' => 'Events', 'startdate' => time() - DAYSECS,
+            'enddate' => time() + DAYSECS, 'requiredpoints' => 5]);
+        $categoryid = $this->manager->save_category((object)['id' => 0, 'cycleid' => $cycleid, 'name' => 'Any',
+            'minpoints' => 0, 'maxpoints' => 0]);
+        $activityid = $this->manager->save_activity((object)['id' => 0, 'cycleid' => $cycleid, 'categoryid' => $categoryid,
+            'title' => 'Webinar', 'activitydate' => time(), 'points' => 2], $user->id);
+        $this->manager->save_activity((object)['id' => $activityid, 'cycleid' => $cycleid, 'categoryid' => $categoryid,
+            'title' => 'Webinar 2', 'activitydate' => time(), 'points' => 3], $user->id);
+        $this->manager->delete_activity($activityid, $user->id);
+        $this->manager->save_category((object)['id' => $categoryid, 'cycleid' => $cycleid, 'name' => 'Renamed',
+            'minpoints' => 0, 'maxpoints' => 0]);
+        $this->manager->delete_category($categoryid);
+        $this->manager->save_cycle((object)['id' => $cycleid, 'name' => 'Renamed', 'startdate' => time() - DAYSECS,
+            'enddate' => time() + DAYSECS, 'requiredpoints' => 5]);
+        $this->manager->delete_cycle($cycleid);
+
+        $events = $sink->get_events();
+        $sink->close();
+        $this->assertSame([
+            event\cycle_created::class,
+            event\category_created::class,
+            event\activity_created::class,
+            event\activity_updated::class,
+            event\activity_deleted::class,
+            event\category_updated::class,
+            event\category_deleted::class,
+            event\cycle_updated::class,
+            event\cycle_deleted::class,
+        ], array_map(fn($e) => get_class($e), $events));
+
+        // Activity events belong to the member, in their user context.
+        $created = $events[2];
+        $this->assertEquals($activityid, $created->objectid);
+        $this->assertEquals($user->id, $created->relateduserid);
+        $this->assertEquals(\context_user::instance($user->id)->id, $created->contextid);
+        $this->assertEquals($cycleid, $created->other['cycleid']);
+        $this->assertInstanceOf(\moodle_url::class, $created->get_url());
+        $this->assertNotEmpty($created->get_description());
+    }
+
+    /**
+     * Create a site-wide custom activity field.
+     *
+     * @param string $type Field type, for example text or checkbox.
+     * @param string $shortname
+     * @return \core_customfield\field_controller
+     */
+    private function create_custom_field(string $type, string $shortname): \core_customfield\field_controller {
+        /** @var \core_customfield_generator $cfgenerator */
+        $cfgenerator = $this->getDataGenerator()->get_plugin_generator('core_customfield');
+        $category = $cfgenerator->create_category(['component' => 'local_cpdtracker', 'area' => 'activity', 'itemid' => 0]);
+        return $cfgenerator->create_field([
+            'categoryid' => $category->get('id'),
+            'type' => $type,
+            'shortname' => $shortname,
+            'name' => ucfirst($shortname),
+        ]);
+    }
+
+    public function test_custom_fields_saved_with_activity_and_deleted_with_it(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->create_custom_field('text', 'provider');
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        $cycle = $this->generator()->create_cycle();
+        $category = $this->generator()->create_category(['cycleid' => $cycle->id]);
+        $data = (object)['id' => 0, 'cycleid' => $cycle->id, 'categoryid' => $category->id, 'title' => 'Course',
+            'activitydate' => time(), 'points' => 2, 'customfield_provider' => 'ACME Training'];
+
+        $id = $this->manager->save_activity($data, $user->id);
+        $handler = customfield\activity_handler::create();
+        $values = array_map(fn($d) => $d->export_value(), $handler->get_instance_data($id));
+        $this->assertContains('ACME Training', $values);
+
+        // Saving without custom field values keeps the existing answers.
+        $this->manager->save_activity((object)['id' => $id, 'cycleid' => $cycle->id, 'categoryid' => $category->id,
+            'title' => 'Course', 'activitydate' => time(), 'points' => 3], $user->id);
+        $values = array_map(fn($d) => $d->export_value(), $handler->get_instance_data($id));
+        $this->assertContains('ACME Training', $values);
+
+        // The answers are stored in the member's user context.
+        $this->assertEquals(
+            \context_user::instance($user->id)->id,
+            $DB->get_field('customfield_data', 'contextid', ['instanceid' => $id])
+        );
+
+        $this->manager->delete_activity($id, $user->id);
+        $this->assertFalse($DB->record_exists('customfield_data', ['instanceid' => $id]));
+    }
+
+    public function test_custom_field_permissions(): void {
+        $this->resetAfterTest();
+        $field = $this->create_custom_field('text', 'reflection');
+        $owner = $this->getDataGenerator()->create_user();
+        $other = $this->getDataGenerator()->create_user();
+        $cycle = $this->generator()->create_cycle();
+        $category = $this->generator()->create_category(['cycleid' => $cycle->id]);
+        $activity = $this->generator()->create_activity(['userid' => $owner->id, 'cycleid' => $cycle->id,
+            'categoryid' => $category->id]);
+        $handler = customfield\activity_handler::create();
+
+        $this->setUser($owner);
+        $this->assertTrue($handler->can_edit($field, (int)$activity->id));
+        $this->assertTrue($handler->can_view($field, (int)$activity->id));
+        $this->assertFalse($handler->can_configure());
+
+        $this->setUser($other);
+        $this->assertFalse($handler->can_edit($field, (int)$activity->id));
+        $this->assertFalse($handler->can_view($field, (int)$activity->id));
+        $this->assertTrue($handler->can_edit($field, 0));
+
+        $this->setAdminUser();
+        $this->assertTrue($handler->can_view($field, (int)$activity->id));
+        $this->assertTrue($handler->can_configure());
+    }
+
+    public function test_record_export(): void {
+        $this->resetAfterTest();
+        $this->create_custom_field('text', 'provider');
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        $cycle = $this->generator()->create_cycle();
+        $hourly = $this->generator()->create_category(['cycleid' => $cycle->id, 'name' => 'Webinars', 'pointsperhour' => 2]);
+        $this->manager->save_activity((object)['id' => 0, 'cycleid' => $cycle->id, 'categoryid' => $hourly->id,
+            'title' => '=HYPERLINK("http://example.com")', 'activitydate' => time() - DAYSECS, 'hours' => 1.5,
+            'customfield_provider' => '+ACME'], $user->id);
+        $other = $this->getDataGenerator()->create_user();
+        $this->generator()->create_activity(['userid' => $other->id, 'cycleid' => $cycle->id, 'categoryid' => $hourly->id]);
+        // An activity logged without answering the field (for example before it existed).
+        $this->generator()->create_activity(['userid' => $user->id, 'cycleid' => $cycle->id, 'categoryid' => $hourly->id,
+            'activitydate' => time() - 2 * DAYSECS]);
+
+        $export = $this->manager->get_record_export($user->id, $cycle);
+
+        $this->assertCount(7, $export->columns);
+        $this->assertCount(2, $export->rows);
+        // Oldest first; an unanswered field stays blank.
+        $fieldcolumn = array_key_last($export->columns);
+        $this->assertSame('', $export->rows[0][$fieldcolumn]);
+        $row = $export->rows[1];
+        $this->assertSame('Webinars', $row['category']);
+        $this->assertSame(format_float(1.5, 2), $row['hours']);
+        $this->assertSame(format_float(3, 2), $row['points']);
+        // Spreadsheet formula injection is neutralised.
+        $this->assertStringStartsWith("'=", $row['title']);
+        $this->assertContains("'+ACME", $row);
+    }
+
+    public function test_safe_export_value(): void {
+        foreach (['=1+1', '+1', '-1', '@SUM(A1)', "\tx", "\rx"] as $value) {
+            $this->assertSame("'" . $value, $this->manager->safe_export_value($value));
+        }
+        foreach (['', 'Course', '1.5', 'A=B'] as $value) {
+            $this->assertSame($value, $this->manager->safe_export_value($value));
+        }
     }
 
     public function test_save_activity_protects_existing_activities(): void {

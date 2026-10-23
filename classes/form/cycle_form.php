@@ -23,7 +23,8 @@ require_once($CFG->libdir . '/formslib.php');
 /**
  * Form for adding or editing a CPD cycle.
  *
- * Custom data: 'id' (cycle id, 0 for new). The id comes from the page URL,
+ * Custom data: 'id' (cycle id, 0 for new) and 'copyoptions' (cycle names keyed by id,
+ * offered as a category source for new cycles). The id comes from the page URL,
  * not a hidden field, so it cannot be changed by editing the form.
  *
  * @package    local_cpdtracker
@@ -59,6 +60,19 @@ class cycle_form extends \moodleform {
         $mform->addElement('float', 'requiredpoints', get_string('requiredpoints', 'local_cpdtracker'));
         $mform->addRule('requiredpoints', null, 'required', null, 'client');
         $mform->addHelpButton('requiredpoints', 'requiredpoints', 'local_cpdtracker');
+
+        // New cycles can start with a copy of an earlier cycle's categories.
+        $copyoptions = $this->_customdata['copyoptions'] ?? [];
+        if (empty($this->_customdata['id']) && $copyoptions) {
+            $mform->addElement(
+                'select',
+                'copyfrom',
+                get_string('copycategoriesfrom', 'local_cpdtracker'),
+                [0 => get_string('copycategoriesnone', 'local_cpdtracker')] + $copyoptions
+            );
+            $mform->setType('copyfrom', PARAM_INT);
+            $mform->addHelpButton('copyfrom', 'copycategoriesfrom', 'local_cpdtracker');
+        }
 
         $this->add_action_buttons();
     }

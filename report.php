@@ -83,7 +83,7 @@ $table->head = [
 $required = format_float($cycle->requiredpoints, 2);
 foreach ($report->rows as $row) {
     $table->data[] = [
-        html_writer::link(new moodle_url('/user/profile.php', ['id' => $row->user->id]), fullname($row->user)),
+        html_writer::link(new moodle_url('/user/profile.php', ['id' => $row->user->id]), s(fullname($row->user))),
         get_string('xofy', 'local_cpdtracker', (object)['x' => format_float($row->total, 2), 'y' => $required]),
         get_string('xofy', 'local_cpdtracker', (object)['x' => $row->categoriesmet, 'y' => $row->categorycount]),
         $row->activitycount,

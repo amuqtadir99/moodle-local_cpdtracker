@@ -38,6 +38,15 @@ class manager {
     /** @var string Activity table. */
     const TABLE_ACTIVITY = 'local_cpdtracker_activity';
 
+    /** @var int Most points or hours one activity can record. */
+    const MAX_ACTIVITY_AMOUNT = 10000;
+
+    /** @var int Most points a cycle can require, or a category can set as its minimum or cap. */
+    const MAX_POINTS_SETTING = 100000;
+
+    /** @var int Highest points-per-hour rate a category can use. */
+    const MAX_POINTS_PER_HOUR = 1000;
+
     /**
      * Get the cycle that is running at the given time.
      *
@@ -218,20 +227,94 @@ class manager {
      *
      * @param stdClass $activity
      * @param int $userid
+     * @param stdClass|null $cycle The activity's cycle, if already loaded.
      * @return bool
      */
-    public function can_edit_activity(stdClass $activity, int $userid): bool {
+    public function can_edit_activity(stdClass $activity, int $userid, ?stdClass $cycle = null): bool {
         if ((int)$activity->userid !== $userid) {
             return false;
         }
-        return $this->is_cycle_open($this->get_cycle($activity->cycleid));
+        if (!$cycle || (int)$cycle->id !== (int)$activity->cycleid) {
+            $cycle = $this->get_cycle($activity->cycleid);
+        }
+        return $this->is_cycle_open($cycle);
+    }
+
+    /**
+     * Whether a category converts hours into points.
+     *
+     * @param stdClass $category
+     * @return bool
+     */
+    public function is_hourly(stdClass $category): bool {
+        return (float)$category->pointsperhour > 0;
+    }
+
+    /**
+     * Convert hours into points at a category's rate.
+     *
+     * @param float $hours
+     * @param stdClass $category
+     * @return float Points, rounded to two decimals.
+     */
+    public function hours_to_points(float $hours, stdClass $category): float {
+        return round($hours * (float)$category->pointsperhour, 2);
+    }
+
+    /**
+     * Check activity data before saving.
+     *
+     * Used by both the form and save_activity(), so the rules live in one place.
+     * Hours are checked for hourly categories, points for all others.
+     *
+     * @param stdClass $data cycleid, categoryid, title, activitydate, points or hours.
+     * @param int|null $time Unix timestamp for "now", defaults to the current time.
+     * @return string[] Error messages keyed by field name, empty if valid.
+     */
+    public function validate_activity(stdClass $data, ?int $time = null): array {
+        global $DB;
+
+        $errors = [];
+        $time = $time ?? time();
+        $cycle = $this->get_cycle((int)$data->cycleid);
+        $category = $DB->get_record(self::TABLE_CATEGORY, ['id' => (int)($data->categoryid ?? 0), 'cycleid' => $cycle->id]);
+        if (!$category) {
+            $errors['categoryid'] = get_string('invalidcategory', 'local_cpdtracker');
+        }
+
+        $title = trim($data->title ?? '');
+        if ($title === '') {
+            $errors['title'] = get_string('required');
+        } else if (\core_text::strlen($title) > 255) {
+            $errors['title'] = get_string('maximumchars', '', 255);
+        }
+
+        $date = (int)($data->activitydate ?? 0);
+        if ($date < (int)$cycle->startdate || $date > (int)$cycle->enddate) {
+            $errors['activitydate'] = get_string('errordateoutsidecycle', 'local_cpdtracker', $this->format_cycle_dates($cycle));
+        } else if ($date > $time) {
+            $errors['activitydate'] = get_string('errordatefuture', 'local_cpdtracker');
+        }
+
+        $field = ($category && $this->is_hourly($category)) ? 'hours' : 'points';
+        $amount = (float)($data->$field ?? 0);
+        if ($amount <= 0) {
+            $errors[$field] = get_string($field === 'hours' ? 'errorhourspositive' : 'errorpointspositive', 'local_cpdtracker');
+        } else if ($amount > self::MAX_ACTIVITY_AMOUNT) {
+            $errors[$field] = get_string('errortoolarge', 'local_cpdtracker', format_float(self::MAX_ACTIVITY_AMOUNT, 0));
+        }
+
+        return $errors;
     }
 
     /**
      * Create or update an activity for a user.
      *
+     * For an hourly category the points are calculated from the hours at the
+     * category's current rate; any submitted points are ignored.
+     *
      * @param stdClass $data Form data: id (0 for new), cycleid, categoryid, title,
-     *     description, activitydate, points.
+     *     description, activitydate, points or hours.
      * @param int $userid Owner of the activity.
      * @return int Activity id.
      * @throws moodle_exception If the cycle is closed, the data is invalid or the user does not own the activity.
@@ -243,44 +326,65 @@ class manager {
         if (!$this->is_cycle_open($cycle)) {
             throw new moodle_exception('cycleclosed', 'local_cpdtracker');
         }
-        if (!$DB->record_exists(self::TABLE_CATEGORY, ['id' => $data->categoryid, 'cycleid' => $cycle->id])) {
-            throw new moodle_exception('invalidcategory', 'local_cpdtracker');
+        $errors = $this->validate_activity($data);
+        if ($errors) {
+            throw new moodle_exception('errorinvaliddata', 'local_cpdtracker', '', implode(' ', $errors));
         }
-        if ((float)$data->points <= 0) {
-            throw new moodle_exception('errorpointspositive', 'local_cpdtracker');
-        }
-        if ($data->activitydate < $cycle->startdate || $data->activitydate > $cycle->enddate) {
-            throw new moodle_exception('errordateoutsidecycle', 'local_cpdtracker', '', $this->format_cycle_dates($cycle));
+
+        $category = $this->get_category((int)$data->categoryid);
+        $hours = null;
+        if ($this->is_hourly($category)) {
+            $hours = round((float)$data->hours, 2);
+            $points = $this->hours_to_points($hours, $category);
+        } else {
+            $points = round((float)$data->points, 2);
         }
 
         $now = time();
         $record = (object)[
             'cycleid' => $cycle->id,
-            'categoryid' => (int)$data->categoryid,
-            'title' => $data->title,
+            'categoryid' => (int)$category->id,
+            'title' => trim($data->title),
             'description' => $data->description ?? '',
             'activitydate' => (int)$data->activitydate,
-            'points' => round((float)$data->points, 2),
+            'points' => $points,
+            'hours' => $hours,
             'timemodified' => $now,
         ];
 
-        if (!empty($data->id)) {
+        $isnew = empty($data->id);
+        if (!$isnew) {
             $existing = $this->get_activity((int)$data->id);
             if ((int)$existing->userid !== $userid || (int)$existing->cycleid !== (int)$cycle->id) {
                 throw new moodle_exception('cannoteditactivity', 'local_cpdtracker');
             }
             $record->id = $existing->id;
-            $DB->update_record(self::TABLE_ACTIVITY, $record);
-            return (int)$record->id;
         }
 
-        $record->userid = $userid;
-        $record->timecreated = $now;
-        return (int)$DB->insert_record(self::TABLE_ACTIVITY, $record);
+        // The activity and its custom field answers are saved together.
+        $transaction = $DB->start_delegated_transaction();
+        if ($isnew) {
+            $record->userid = $userid;
+            $record->timecreated = $now;
+            $record->id = $DB->insert_record(self::TABLE_ACTIVITY, $record);
+        } else {
+            $DB->update_record(self::TABLE_ACTIVITY, $record);
+        }
+        $data->id = $record->id;
+        customfield\activity_handler::create()->instance_form_save($data, $isnew);
+        $transaction->allow_commit();
+
+        $saved = $this->get_activity($record->id);
+        if ($isnew) {
+            event\activity_created::create_from_activity($saved)->trigger();
+        } else {
+            event\activity_updated::create_from_activity($saved)->trigger();
+        }
+        return (int)$record->id;
     }
 
     /**
-     * Delete an activity owned by a user.
+     * Delete an activity owned by a user, including its custom field data.
      *
      * @param int $activityid
      * @param int $userid
@@ -293,7 +397,80 @@ class manager {
         if (!$this->can_edit_activity($activity, $userid)) {
             throw new moodle_exception('cannoteditactivity', 'local_cpdtracker');
         }
+        $transaction = $DB->start_delegated_transaction();
+        customfield\activity_handler::create()->delete_instance((int)$activity->id);
         $DB->delete_records(self::TABLE_ACTIVITY, ['id' => $activity->id]);
+        $transaction->allow_commit();
+        event\activity_deleted::create_from_activity($activity)->trigger();
+    }
+
+    /**
+     * Build a member's downloadable CPD record for one cycle, oldest activity first.
+     *
+     * Includes one column per custom activity field. Text cells are made safe
+     * for spreadsheets with safe_export_value().
+     *
+     * @param int $userid
+     * @param stdClass $cycle
+     * @return stdClass Object with 'columns' (key => heading) and 'rows' (arrays keyed like columns).
+     */
+    public function get_record_export(int $userid, stdClass $cycle): stdClass {
+        $categories = $this->get_categories($cycle->id);
+        $activities = array_reverse($this->get_user_activities($userid, $cycle->id), true);
+        $handler = customfield\activity_handler::create();
+        $fields = $handler->get_fields();
+        // Saved answers only: a field added after an activity was logged stays blank rather than showing its default.
+        $fielddata = $activities ? $handler->get_instances_data(array_keys($activities)) : [];
+
+        $columns = [
+            'activitydate' => get_string('activitydate', 'local_cpdtracker'),
+            'title' => get_string('title', 'local_cpdtracker'),
+            'category' => get_string('category', 'local_cpdtracker'),
+            'hours' => get_string('hours', 'local_cpdtracker'),
+            'points' => get_string('points', 'local_cpdtracker'),
+            'description' => get_string('description', 'local_cpdtracker'),
+        ];
+        foreach ($fields as $field) {
+            $columns['field' . $field->get('id')] = format_string($field->get('name'));
+        }
+
+        $dateformat = get_string('strftimedate', 'langconfig');
+        $rows = [];
+        foreach ($activities as $activity) {
+            $category = $categories[$activity->categoryid] ?? null;
+            $row = [
+                'activitydate' => userdate($activity->activitydate, $dateformat),
+                'title' => $this->safe_export_value(format_string($activity->title)),
+                'category' => $this->safe_export_value($category ? format_string($category->name) : ''),
+                'hours' => $activity->hours === null ? '' : format_float($activity->hours, 2),
+                'points' => format_float($activity->points, 2),
+                'description' => $this->safe_export_value((string)$activity->description),
+            ];
+            foreach ($fields as $field) {
+                $data = $fielddata[$activity->id][$field->get('id')] ?? null;
+                $value = $data ? (string)$data->export_value() : '';
+                $value = trim(html_entity_decode(strip_tags($value), ENT_QUOTES, 'UTF-8'));
+                $row['field' . $field->get('id')] = $this->safe_export_value($value);
+            }
+            $rows[] = $row;
+        }
+
+        return (object)['columns' => $columns, 'rows' => $rows];
+    }
+
+    /**
+     * Stop a text value being run as a formula when the export is opened in a spreadsheet.
+     *
+     * Values starting with =, +, -, @, a tab or a carriage return get a leading apostrophe.
+     *
+     * @param string $value
+     * @return string
+     */
+    public function safe_export_value(string $value): string {
+        if ($value !== '' && strpbrk($value[0], "=+-@\t\r") !== false) {
+            return "'" . $value;
+        }
+        return $value;
     }
 
     /**
@@ -446,8 +623,11 @@ class manager {
             $errors['name'] = get_string('maximumchars', '', 255);
         }
 
-        if ((float)($data->requiredpoints ?? 0) < 0) {
+        $required = (float)($data->requiredpoints ?? 0);
+        if ($required < 0) {
             $errors['requiredpoints'] = get_string('errornegativepoints', 'local_cpdtracker');
+        } else if ($required > self::MAX_POINTS_SETTING) {
+            $errors['requiredpoints'] = get_string('errortoolarge', 'local_cpdtracker', format_float(self::MAX_POINTS_SETTING, 0));
         }
 
         $start = $this->start_of_day((int)$data->startdate);
@@ -475,7 +655,10 @@ class manager {
     /**
      * Create or update a cycle. Start and end dates are widened to whole days.
      *
-     * @param stdClass $data id (0 for new), name, description, startdate, enddate, requiredpoints.
+     * A new cycle can copy all categories from an existing cycle (copyfrom).
+     *
+     * @param stdClass $data id (0 for new), name, description, startdate, enddate, requiredpoints,
+     *     and optionally copyfrom (cycle id) for new cycles.
      * @return int Cycle id.
      * @throws moodle_exception If the data fails validate_cycle().
      */
@@ -500,11 +683,56 @@ class manager {
         if (!empty($data->id)) {
             $record->id = $this->get_cycle((int)$data->id)->id;
             $DB->update_record(self::TABLE_CYCLE, $record);
+            event\cycle_updated::create_from_cycle($this->get_cycle($record->id))->trigger();
             return (int)$record->id;
         }
 
+        $transaction = $DB->start_delegated_transaction();
         $record->timecreated = $now;
-        return (int)$DB->insert_record(self::TABLE_CYCLE, $record);
+        $record->id = $DB->insert_record(self::TABLE_CYCLE, $record);
+        if (!empty($data->copyfrom)) {
+            $this->copy_categories((int)$data->copyfrom, (int)$record->id);
+        }
+        $transaction->allow_commit();
+
+        event\cycle_created::create_from_cycle($this->get_cycle($record->id))->trigger();
+        return (int)$record->id;
+    }
+
+    /**
+     * Copy every category of one cycle into another, keeping their order.
+     *
+     * @param int $fromcycleid
+     * @param int $tocycleid
+     * @return int Number of categories copied.
+     */
+    public function copy_categories(int $fromcycleid, int $tocycleid): int {
+        global $DB;
+
+        $this->get_cycle($tocycleid);
+        $now = time();
+        $copied = 0;
+        $sortorder = (int)$DB->get_field_sql(
+            'SELECT COALESCE(MAX(sortorder), 0) FROM {local_cpdtracker_category} WHERE cycleid = :cycleid',
+            ['cycleid' => $tocycleid]
+        );
+        foreach ($this->get_categories($this->get_cycle($fromcycleid)->id) as $category) {
+            $copy = (object)[
+                'cycleid' => $tocycleid,
+                'name' => $category->name,
+                'description' => $category->description,
+                'minpoints' => $category->minpoints,
+                'maxpoints' => $category->maxpoints,
+                'pointsperhour' => $category->pointsperhour,
+                'sortorder' => ++$sortorder,
+                'timecreated' => $now,
+                'timemodified' => $now,
+            ];
+            $copy->id = $DB->insert_record(self::TABLE_CATEGORY, $copy);
+            event\category_created::create_from_category($copy)->trigger();
+            $copied++;
+        }
+        return $copied;
     }
 
     /**
@@ -525,6 +753,8 @@ class manager {
         $DB->delete_records(self::TABLE_CATEGORY, ['cycleid' => $cycle->id]);
         $DB->delete_records(self::TABLE_CYCLE, ['id' => $cycle->id]);
         $transaction->allow_commit();
+
+        event\cycle_deleted::create_from_cycle($cycle)->trigger();
     }
 
     /**
@@ -571,7 +801,7 @@ class manager {
     /**
      * Check category data before saving.
      *
-     * @param stdClass $data name, minpoints, maxpoints.
+     * @param stdClass $data name, minpoints, maxpoints, pointsperhour.
      * @return string[] Error messages keyed by field name, empty if valid.
      */
     public function validate_category(stdClass $data): array {
@@ -584,14 +814,23 @@ class manager {
             $errors['name'] = get_string('maximumchars', '', 255);
         }
 
+        $limits = [
+            'minpoints' => self::MAX_POINTS_SETTING,
+            'maxpoints' => self::MAX_POINTS_SETTING,
+            'pointsperhour' => self::MAX_POINTS_PER_HOUR,
+        ];
+        foreach ($limits as $field => $limit) {
+            $value = (float)($data->$field ?? 0);
+            if ($value < 0) {
+                $errors[$field] = get_string('errornegativepoints', 'local_cpdtracker');
+            } else if ($value > $limit) {
+                $errors[$field] = get_string('errortoolarge', 'local_cpdtracker', format_float($limit, 0));
+            }
+        }
+
         $min = (float)($data->minpoints ?? 0);
         $max = (float)($data->maxpoints ?? 0);
-        if ($min < 0) {
-            $errors['minpoints'] = get_string('errornegativepoints', 'local_cpdtracker');
-        }
-        if ($max < 0) {
-            $errors['maxpoints'] = get_string('errornegativepoints', 'local_cpdtracker');
-        } else if ($max > 0 && $max < $min) {
+        if (!isset($errors['maxpoints']) && $max > 0 && $max < $min) {
             $errors['maxpoints'] = get_string('errormaxbelowmin', 'local_cpdtracker');
         }
 
@@ -601,7 +840,7 @@ class manager {
     /**
      * Create or update a category. New categories go to the end of the cycle's list.
      *
-     * @param stdClass $data id (0 for new), cycleid, name, description, minpoints, maxpoints.
+     * @param stdClass $data id (0 for new), cycleid, name, description, minpoints, maxpoints, pointsperhour.
      * @return int Category id.
      * @throws moodle_exception If the data is invalid or the category belongs to another cycle.
      */
@@ -620,6 +859,7 @@ class manager {
             'description' => $data->description ?? '',
             'minpoints' => round((float)$data->minpoints, 2),
             'maxpoints' => round((float)$data->maxpoints, 2),
+            'pointsperhour' => round((float)($data->pointsperhour ?? 0), 2),
             'timemodified' => $now,
         ];
 
@@ -630,6 +870,7 @@ class manager {
             }
             $record->id = $existing->id;
             $DB->update_record(self::TABLE_CATEGORY, $record);
+            event\category_updated::create_from_category($this->get_category($record->id))->trigger();
             return (int)$record->id;
         }
 
@@ -640,7 +881,9 @@ class manager {
         $record->cycleid = $cycle->id;
         $record->sortorder = $maxsort + 1;
         $record->timecreated = $now;
-        return (int)$DB->insert_record(self::TABLE_CATEGORY, $record);
+        $record->id = $DB->insert_record(self::TABLE_CATEGORY, $record);
+        event\category_created::create_from_category($this->get_category($record->id))->trigger();
+        return (int)$record->id;
     }
 
     /**
@@ -657,6 +900,7 @@ class manager {
             throw new moodle_exception('categoryhasactivities', 'local_cpdtracker');
         }
         $DB->delete_records(self::TABLE_CATEGORY, ['id' => $category->id]);
+        event\category_deleted::create_from_category($category)->trigger();
     }
 
     /**

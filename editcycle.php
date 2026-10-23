@@ -40,7 +40,17 @@ $title = get_string($id ? 'editcycle' : 'addcycle', 'local_cpdtracker');
 $PAGE->set_title($title);
 $PAGE->navbar->add($title);
 
-$form = new \local_cpdtracker\form\cycle_form($url, ['id' => $id]);
+// Cycles with categories can be copied into a new cycle.
+$copyoptions = [];
+if (!$id) {
+    foreach ($manager->get_cycles() as $option) {
+        if ($option->categorycount) {
+            $copyoptions[$option->id] = format_string($option->name);
+        }
+    }
+}
+
+$form = new \local_cpdtracker\form\cycle_form($url, ['id' => $id, 'copyoptions' => $copyoptions]);
 
 if ($form->is_cancelled()) {
     redirect($returnurl);
