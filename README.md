@@ -146,7 +146,7 @@ My CPD shows progress towards the cycle total and each category minimum. Members
 
 ### 5. Monitor compliance
 
-Go to **Site administration > Plugins > Local plugins > CPD Tracker > CPD compliance report**, choose a cycle and review each member's counted points, categories met, number of activities and compliance status.
+Go to **Site administration > Plugins > Local plugins > CPD Tracker > CPD compliance report**, choose a cycle and review each member's counted points, categories met, number of activities and compliance status. "Categories met" counts only categories that have a minimum.
 
 ## Permissions
 

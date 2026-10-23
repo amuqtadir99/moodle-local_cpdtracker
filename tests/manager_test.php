@@ -931,6 +931,8 @@ final class manager_test extends advanced_testcase {
         $suspended = $this->getDataGenerator()->create_user(['lastname' => 'Abb', 'suspended' => 1]);
         $cycle = $this->generator()->create_cycle(['requiredpoints' => 10]);
         $category = $this->generator()->create_category(['cycleid' => $cycle->id, 'minpoints' => 5]);
+        // A category without a minimum is left out of "categories met".
+        $this->generator()->create_category(['cycleid' => $cycle->id, 'minpoints' => 0]);
         $this->generator()->create_activity([
             'userid' => $aaa->id,
             'cycleid' => $cycle->id,
@@ -955,9 +957,11 @@ final class manager_test extends advanced_testcase {
         $this->assertTrue($rowaaa->compliant);
         $this->assertEquals(10, $rowaaa->total);
         $this->assertSame(1, $rowaaa->categoriesmet);
+        $this->assertSame(1, $rowaaa->categorycount);
         $this->assertSame(1, $rowaaa->activitycount);
         $this->assertFalse($rowbbb->compliant);
         $this->assertSame(0, $rowbbb->categoriesmet);
+        $this->assertSame(1, $rowbbb->categorycount);
         $this->assertFalse($rowadmin->compliant);
         $this->assertSame(0, $rowadmin->activitycount);
         $this->assertSame('Ann Aaa', fullname($rowaaa->user));

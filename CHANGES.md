@@ -1,5 +1,11 @@
 # Changes
 
+## 1.2.1 (2026102302) - 2026-10-23
+
+- My CPD now shows "Not required" instead of "Met" for categories without a minimum, so a category with no points no longer looks completed.
+- The compliance report's "Categories met" column now counts only categories that have a minimum, and shows "Not required" when a cycle has none.
+- Compliance rules are unchanged.
+
 ## 1.2.0 (2026102301) - 2026-10-23
 
 - Added activity form fields: administrators add their own questions to the log-activity form (short text, text area, dropdown, checkbox, date and number, optionally required) using Moodle custom fields. Answers show on My CPD, are included in downloads and are covered by the Privacy API.

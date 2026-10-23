@@ -85,7 +85,9 @@ foreach ($report->rows as $row) {
     $table->data[] = [
         html_writer::link(new moodle_url('/user/profile.php', ['id' => $row->user->id]), s(fullname($row->user))),
         get_string('xofy', 'local_cpdtracker', (object)['x' => format_float($row->total, 2), 'y' => $required]),
-        get_string('xofy', 'local_cpdtracker', (object)['x' => $row->categoriesmet, 'y' => $row->categorycount]),
+        $row->categorycount
+            ? get_string('xofy', 'local_cpdtracker', (object)['x' => $row->categoriesmet, 'y' => $row->categorycount])
+            : html_writer::span(get_string('notrequired', 'local_cpdtracker'), 'text-muted'),
         $row->activitycount,
         $row->compliant
             ? html_writer::span(get_string('compliantshort', 'local_cpdtracker'), 'badge bg-success text-white')

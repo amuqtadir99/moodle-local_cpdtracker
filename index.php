@@ -127,7 +127,10 @@ if ($summary->categories) {
             format_float($row->raw, 2),
             format_float($row->counted, 2),
             $min > 0 ? helper::progress_bar($row->counted, $min, $name) : get_string('nominimum', 'local_cpdtracker'),
-            get_string($row->meetsmin ? 'met' : 'notmet', 'local_cpdtracker'),
+            // A category without a minimum has nothing to meet: show a neutral status, not "Met".
+            $min > 0
+                ? get_string($row->meetsmin ? 'met' : 'notmet', 'local_cpdtracker')
+                : html_writer::span(get_string('notrequired', 'local_cpdtracker'), 'text-muted'),
         ];
     }
     echo html_writer::table($table);

@@ -942,6 +942,7 @@ class manager {
      * @param int $perpage
      * @return stdClass Object with 'total' (member count) and 'rows', each with
      *     user, total, categoriesmet, categorycount, activitycount, compliant.
+     *     categoriesmet and categorycount only include categories that have a minimum.
      */
     public function get_report_page(stdClass $cycle, int $page, int $perpage): stdClass {
         global $DB;
@@ -986,11 +987,13 @@ class manager {
             foreach ($users as $user) {
                 $usersums = $byuser[$user->id] ?? [];
                 $points = $this->calculate_points($categories, $usersums);
+                // A category without a minimum has nothing to meet, so it is left out of the count.
+                $withminimum = array_filter($points->categories, fn($row) => (float)$row->category->minpoints > 0);
                 $rows[] = (object)[
                     'user' => $user,
                     'total' => $points->total,
-                    'categoriesmet' => count(array_filter($points->categories, fn($row) => $row->meetsmin)),
-                    'categorycount' => count($categories),
+                    'categoriesmet' => count(array_filter($withminimum, fn($row) => $row->meetsmin)),
+                    'categorycount' => count($withminimum),
                     'activitycount' => array_sum(array_map(fn($sum) => (int)$sum->activities, $usersums)),
                     'compliant' => $this->is_compliant($cycle, $points),
                 ];

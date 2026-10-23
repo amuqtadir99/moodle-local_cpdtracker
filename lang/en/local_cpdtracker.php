@@ -113,6 +113,7 @@ $string['nominimum'] = 'No minimum';
 $string['notcompliant'] = 'You have not yet met the CPD requirements for this cycle.';
 $string['notcompliantshort'] = 'Not compliant';
 $string['notmet'] = 'Not met';
+$string['notrequired'] = 'Not required';
 $string['overallprogress'] = 'Overall progress';
 $string['percentreached'] = '{$a}%';
 $string['pluginname'] = 'CPD Tracker';
