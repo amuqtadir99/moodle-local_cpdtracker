@@ -20,6 +20,7 @@ use advanced_testcase;
 use moodle_exception;
 use stdClass;
 
+#[\PHPUnit\Framework\Attributes\CoversClass(manager::class)]
 /**
  * Tests for the CPD Tracker manager.
  *
@@ -213,6 +214,7 @@ final class manager_test extends advanced_testcase {
      * @param array $activities Each [categoryid, points].
      * @param bool $expected
      */
+    #[\PHPUnit\Framework\Attributes\DataProvider('is_compliant_provider')]
     public function test_is_compliant(float $required, array $categories, array $activities, bool $expected): void {
         $categoryrecords = [];
         foreach ($categories as [$id, $min, $max]) {

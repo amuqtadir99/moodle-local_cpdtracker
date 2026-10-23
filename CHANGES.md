@@ -1,5 +1,10 @@
 # Changes
 
+## 1.1.0 (2026102300) - 2026-10-23
+
+- Added support for Moodle 5.1, 5.2 and 5.3 LTS. Supported versions are now Moodle 4.5 LTS to 5.3 LTS, on PHP 8.1 to 8.4.
+- Added automated testing on GitHub Actions for every supported Moodle version, on PostgreSQL and MariaDB.
+
 ## 1.0.0 (2026102205) - 2026-10-22
 
 - First stable release, supporting Moodle 4.5.

@@ -1,7 +1,8 @@
 # CPD Tracker for Moodle
 
-[![Moodle 4.5 LTS](https://img.shields.io/badge/Moodle-4.5%20LTS-f98012?logo=moodle&logoColor=white)](https://moodledev.io/general/releases/4.5)
-[![PHP 8.1 to 8.3](https://img.shields.io/badge/PHP-8.1--8.3-777bb4?logo=php&logoColor=white)](https://www.php.net/)
+[![Moodle Plugin CI](https://github.com/amuqtadir99/moodle-local_cpdtracker/actions/workflows/ci.yml/badge.svg)](https://github.com/amuqtadir99/moodle-local_cpdtracker/actions/workflows/ci.yml)
+[![Moodle 4.5 to 5.3](https://img.shields.io/badge/Moodle-4.5%20to%205.3-f98012?logo=moodle&logoColor=white)](https://moodledev.io/general/releases)
+[![PHP 8.1 to 8.4](https://img.shields.io/badge/PHP-8.1--8.4-777bb4?logo=php&logoColor=white)](https://www.php.net/)
 [![Release](https://img.shields.io/github/v/tag/amuqtadir99/moodle-local_cpdtracker?label=release&color=brightgreen)](https://github.com/amuqtadir99/moodle-local_cpdtracker/tags)
 [![Maturity: stable](https://img.shields.io/badge/maturity-stable-brightgreen)](CHANGES.md)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL%20v3-blue)](LICENSE)
@@ -45,11 +46,18 @@ The member needs 8 more points, and only points in Structured learning (or anoth
 
 ## Requirements
 
-| | |
+CPD Tracker supports every Moodle version that currently receives security updates:
+
+| Moodle | PHP |
 |---|---|
-| Moodle | 4.5 LTS |
-| PHP | 8.1 to 8.3, as required by Moodle 4.5 |
-| Database | Any database supported by Moodle (tested on PostgreSQL) |
+| 4.5 LTS | 8.1 to 8.3 |
+| 5.1 | 8.2 to 8.4 |
+| 5.2 | 8.3 to 8.4 |
+| 5.3 LTS | 8.3 to 8.4 |
+
+Any database supported by your Moodle version can be used. Every release is tested automatically on each Moodle version above, with PostgreSQL and MariaDB, at the lowest and highest supported PHP version.
+
+Always run the latest patch release of your PHP version, as PHP security fixes are only shipped in new patch releases.
 
 ## Installation
 
@@ -62,7 +70,13 @@ The member needs 8 more points, and only points in Structured learning (or anoth
 
 ### Option 2: Install with Git
 
-From your Moodle root folder:
+From your Moodle root folder, on Moodle 5.1 and later:
+
+```bash
+git clone https://github.com/amuqtadir99/moodle-local_cpdtracker.git public/local/cpdtracker
+```
+
+On Moodle 4.5:
 
 ```bash
 git clone https://github.com/amuqtadir99/moodle-local_cpdtracker.git local/cpdtracker
@@ -76,7 +90,7 @@ php admin/cli/upgrade.php
 
 ### Option 3: Copy the files manually
 
-Copy the plugin files into `local/cpdtracker` in your Moodle code, then visit **Site administration > Notifications**.
+Copy the plugin files into `public/local/cpdtracker` (Moodle 5.1 and later) or `local/cpdtracker` (Moodle 4.5), then visit **Site administration > Notifications**.
 
 ## Getting started
 
@@ -177,12 +191,23 @@ All business logic lives in `classes/manager.php`. Pages only handle input, acce
 
 ### Running the tests
 
-The plugin includes PHPUnit tests for the business logic and the privacy provider. From your Moodle root, after initialising the PHPUnit environment:
+The plugin includes PHPUnit tests for the business logic and the privacy provider. From your Moodle root, initialise the PHPUnit environment, then run the plugin's test suite.
+
+On Moodle 5.1 and later:
+
+```bash
+php public/admin/tool/phpunit/cli/init.php
+vendor/bin/phpunit --testsuite local_cpdtracker_testsuite
+```
+
+On Moodle 4.5:
 
 ```bash
 php admin/tool/phpunit/cli/init.php
 vendor/bin/phpunit --testsuite local_cpdtracker_testsuite
 ```
+
+The tests declare their metadata both as PHPUnit attributes (read by PHPUnit 11 on Moodle 5.x) and as doc-comment annotations (read by PHPUnit 9 on Moodle 4.5).
 
 Tests create data with the plugin's generator:
 
@@ -193,7 +218,7 @@ $cycle = $generator->create_cycle(['requiredpoints' => 30]);
 
 ### Coding standards
 
-The code follows the [Moodle coding style](https://moodledev.io/general/development/policies/codingstyle) and passes [moodle-plugin-ci](https://moodlehq.github.io/moodle-plugin-ci/) checks (phplint, phpcs, phpdoc, validate and savepoints) with no errors or warnings.
+The code follows the [Moodle coding style](https://moodledev.io/general/development/policies/codingstyle). On every push and pull request, [GitHub Actions](.github/workflows/ci.yml) runs [moodle-plugin-ci](https://moodlehq.github.io/moodle-plugin-ci/) against each supported Moodle version: PHP lint, the Moodle code checker and PHPDoc checker (no warnings allowed), plugin validation, upgrade savepoints and the PHPUnit tests.
 
 ## Support and contributing
 

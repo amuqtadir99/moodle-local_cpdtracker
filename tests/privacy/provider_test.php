@@ -26,6 +26,7 @@ use core_privacy\local\request\writer;
 use core_privacy\tests\provider_testcase;
 use stdClass;
 
+#[\PHPUnit\Framework\Attributes\CoversClass(provider::class)]
 /**
  * Tests for the CPD Tracker privacy provider.
  *
