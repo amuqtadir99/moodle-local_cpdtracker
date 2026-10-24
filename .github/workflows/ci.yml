@@ -36,11 +36,24 @@ jobs:
           - 3306:3306
         options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval 10s --health-timeout 5s --health-retries 3
 
+      mysql:
+        image: ${{ matrix.database == 'mysqli' && 'mysql:8.4' || '' }}
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'true'
+          MYSQL_CHARACTER_SET_SERVER: "utf8mb4"
+          MYSQL_COLLATION_SERVER: "utf8mb4_unicode_ci"
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
     strategy:
       fail-fast: false
       matrix:
-        # Every supported Moodle branch, at its lowest and highest supported PHP version.
+        # Every supported Moodle branch, at its lowest and highest supported PHP version,
+        # across PostgreSQL, MariaDB and MySQL (Moodle Marketplace requires MySQL and PostgreSQL).
         include:
+          - { moodle: '4.5', moodle-branch: MOODLE_405_STABLE, php: '8.3', database: mysqli }
+          - { moodle: '5.3', moodle-branch: MOODLE_503_STABLE, php: '8.4', database: mysqli }
           - { moodle: '4.5', moodle-branch: MOODLE_405_STABLE, php: '8.1', database: pgsql }
           - { moodle: '4.5', moodle-branch: MOODLE_405_STABLE, php: '8.3', database: mariadb }
           - { moodle: '5.1', moodle-branch: MOODLE_501_STABLE, php: '8.2', database: mariadb }

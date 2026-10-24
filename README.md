@@ -27,7 +27,7 @@ Component: `local_cpdtracker`
 - **Download my CPD record.** Members download their own record as CSV, Excel, ODS, PDF and other formats enabled on your site, including their answers to your questions.
 - **Compliance report.** Staff see every member's points and status for any cycle, paged and sorted by surname.
 - **Data integrity built in.** Cycles cannot overlap, activities must fall inside their cycle and cannot be future-dated, and cycles or categories that hold member records cannot be deleted.
-- **Audit trail.** Changes to activities, cycles and categories are recorded in Moodle's logs.
+- **Audit trail.** Changes to activities, cycles and categories, views of the compliance report and record downloads are recorded in Moodle's logs.
 - **Privacy ready.** Full Moodle Privacy API support, so member data, including answers to your questions, is included in data exports and removed on deletion requests.
 
 ## How compliance is calculated
@@ -62,7 +62,7 @@ CPD Tracker supports every Moodle version that currently receives security updat
 | 5.2 | 8.3 to 8.4 |
 | 5.3 LTS | 8.3 to 8.4 |
 
-Any database supported by your Moodle version can be used. Every release is tested automatically on each Moodle version above, with PostgreSQL and MariaDB, at the lowest and highest supported PHP version.
+Any database supported by your Moodle version can be used. Every release is tested automatically on each Moodle version above, with PostgreSQL, MariaDB and MySQL, at the lowest and highest supported PHP version.
 
 Always run the latest patch release of your PHP version, as PHP security fixes are only shipped in new patch releases.
 
@@ -156,7 +156,7 @@ Go to **Site administration > Plugins > Local plugins > CPD Tracker > CPD compli
 | `local/cpdtracker:manage` | Manager | Creating, editing and deleting cycles and categories, and designing the activity form |
 | `local/cpdtracker:viewreport` | Manager | Viewing every member's points and compliance status |
 
-Users with the `manage` or `viewreport` capability also see shortcuts to those screens on their My CPD page.
+Users with the `manage` or `viewreport` capability also see shortcuts to those screens on their My CPD page. Moodle flags `manage` as a configuration and spam risk and `viewreport` as a personal data risk, so grant them only to trusted staff.
 
 The compliance report lists **members**: active, confirmed users who hold `local/cpdtracker:logactivity`. To limit tracking to a specific group, create a role with this capability, assign it to that group, and remove the capability from the Authenticated user role.
 
@@ -170,7 +170,8 @@ To keep CPD records reliable, the plugin enforces these rules:
 - A category's cap must be 0 (no cap) or at least its minimum.
 - Members can only add, change or delete activities while a cycle is open, and only their own.
 - Activity dates cannot be in the future.
-- To keep numbers realistic, one activity can record at most 10,000 points or hours, required points, minimums and caps can be at most 100,000, and a points-per-hour rate at most 1,000.
+- To keep numbers realistic, one activity can record at least 0.01 and at most 10,000 points or hours (and at most 10,000 points once hours are converted), required points, minimums and caps can be at most 100,000, and a points-per-hour rate at most 1,000.
+- An activity description can be at most 10,000 characters, and a member can log at most 1,000 activities per cycle.
 
 ## Privacy
 
@@ -180,7 +181,10 @@ The plugin implements the Moodle Privacy API, so member activities and answers a
 
 - listed in the site's data registry
 - included when a member's data is exported
-- removed when a member's data is deleted
+- removed when a member's data is deleted through a data request
+- removed automatically when a member's Moodle account is deleted
+
+Viewing the compliance report, which shows other members' data, is logged, as is each record download.
 
 Cycles, categories and the activity form are site configuration and contain no personal data. The plugin does not send data outside your Moodle site.
 
@@ -195,11 +199,12 @@ cpdtracker/
 ├── classes/
 │   ├── manager.php            Business logic: points, hours, compliance, cycles, categories, report, export
 │   ├── customfield/           Custom fields handler for the activity form
-│   ├── event/                 Events for activities, cycles and categories
+│   ├── event/                 Events for activities, cycles, categories, report views and downloads
 │   ├── form/                  Activity, cycle and category forms
 │   ├── output/                Progress bar helper
+│   ├── observer.php           Removes CPD data when a user account is deleted
 │   └── privacy/provider.php   Privacy API implementation
-├── db/                        Schema, upgrade and uninstall steps, capabilities
+├── db/                        Schema, upgrade and uninstall steps, capabilities, event observers
 ├── lang/en/                   Language strings
 ├── tests/                     PHPUnit tests and test data generator
 ├── index.php                  My CPD
@@ -220,7 +225,7 @@ All business logic lives in `classes/manager.php`. Pages only handle input, acce
 
 ### Running the tests
 
-The plugin includes PHPUnit tests for the business logic and the privacy provider. From your Moodle root, initialise the PHPUnit environment, then run the plugin's test suite.
+The plugin includes PHPUnit tests for the business logic, privacy provider, forms, events, custom fields handler and security limits. From your Moodle root, initialise the PHPUnit environment, then run the plugin's test suite.
 
 On Moodle 5.1 and later:
 

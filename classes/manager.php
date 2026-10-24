@@ -47,6 +47,12 @@ class manager {
     /** @var int Highest points-per-hour rate a category can use. */
     const MAX_POINTS_PER_HOUR = 1000;
 
+    /** @var int Longest activity description, in characters. */
+    const MAX_DESCRIPTION_LENGTH = 10000;
+
+    /** @var int Most activities one member can log in one cycle (limits storage abuse by any account). */
+    const MAX_ACTIVITIES_PER_CYCLE = 1000;
+
     /**
      * Get the cycle that is running at the given time.
      *
@@ -296,15 +302,47 @@ class manager {
             $errors['activitydate'] = get_string('errordatefuture', 'local_cpdtracker');
         }
 
-        $field = ($category && $this->is_hourly($category)) ? 'hours' : 'points';
+        // Amounts are checked as they will be stored: finite and still above zero after rounding.
+        $hourly = $category && $this->is_hourly($category);
+        $field = $hourly ? 'hours' : 'points';
         $amount = (float)($data->$field ?? 0);
-        if ($amount <= 0) {
-            $errors[$field] = get_string($field === 'hours' ? 'errorhourspositive' : 'errorpointspositive', 'local_cpdtracker');
+        $positive = get_string($hourly ? 'errorhourspositive' : 'errorpointspositive', 'local_cpdtracker');
+        if (!is_finite($amount) || round($amount, 2) <= 0) {
+            $errors[$field] = $positive;
         } else if ($amount > self::MAX_ACTIVITY_AMOUNT) {
             $errors[$field] = get_string('errortoolarge', 'local_cpdtracker', format_float(self::MAX_ACTIVITY_AMOUNT, 0));
+        } else if ($hourly) {
+            $points = $this->hours_to_points(round($amount, 2), $category);
+            if ($points <= 0) {
+                $errors[$field] = $positive;
+            } else if ($points > self::MAX_ACTIVITY_AMOUNT) {
+                $errors[$field] = get_string(
+                    'errorhourstoomanypoints',
+                    'local_cpdtracker',
+                    format_float(self::MAX_ACTIVITY_AMOUNT, 0)
+                );
+            }
+        }
+
+        if (\core_text::strlen((string)($data->description ?? '')) > self::MAX_DESCRIPTION_LENGTH) {
+            $errors['description'] = get_string('maximumchars', '', self::MAX_DESCRIPTION_LENGTH);
         }
 
         return $errors;
+    }
+
+    /**
+     * Whether a member can log another activity in a cycle without passing the per-cycle limit.
+     *
+     * @param int $userid
+     * @param int $cycleid
+     * @return bool
+     */
+    public function can_add_activity(int $userid, int $cycleid): bool {
+        global $DB;
+
+        return $DB->count_records(self::TABLE_ACTIVITY, ['userid' => $userid, 'cycleid' => $cycleid])
+            < self::MAX_ACTIVITIES_PER_CYCLE;
     }
 
     /**
@@ -329,6 +367,9 @@ class manager {
         $errors = $this->validate_activity($data);
         if ($errors) {
             throw new moodle_exception('errorinvaliddata', 'local_cpdtracker', '', implode(' ', $errors));
+        }
+        if (empty($data->id) && !$this->can_add_activity($userid, (int)$cycle->id)) {
+            throw new moodle_exception('erroractivitylimit', 'local_cpdtracker', '', self::MAX_ACTIVITIES_PER_CYCLE);
         }
 
         $category = $this->get_category((int)$data->categoryid);
@@ -405,10 +446,34 @@ class manager {
     }
 
     /**
+     * Remove all of a user's activities and custom field answers, for example when the user is deleted.
+     *
+     * No events are triggered: the user's context may already be gone.
+     *
+     * @param int $userid
+     */
+    public function delete_user_data(int $userid): void {
+        global $DB;
+
+        $activityids = $DB->get_fieldset_select(self::TABLE_ACTIVITY, 'id', 'userid = :userid', ['userid' => $userid]);
+        if (!$activityids) {
+            return;
+        }
+        $handler = customfield\activity_handler::create();
+        $transaction = $DB->start_delegated_transaction();
+        foreach ($activityids as $activityid) {
+            // Through the handler, so files of text area answers are removed too.
+            $handler->delete_instance((int)$activityid);
+        }
+        $DB->delete_records(self::TABLE_ACTIVITY, ['userid' => $userid]);
+        $transaction->allow_commit();
+    }
+
+    /**
      * Build a member's downloadable CPD record for one cycle, oldest activity first.
      *
-     * Includes one column per custom activity field. Text cells are made safe
-     * for spreadsheets with safe_export_value().
+     * Includes one column per custom activity field. Values are plain text (not HTML-escaped)
+     * and made safe for spreadsheets with safe_export_value().
      *
      * @param int $userid
      * @param stdClass $cycle
@@ -430,8 +495,10 @@ class manager {
             'points' => get_string('points', 'local_cpdtracker'),
             'description' => get_string('description', 'local_cpdtracker'),
         ];
+        // Exports are not HTML, so text is formatted without HTML escaping.
+        $plain = ['context' => \context_system::instance(), 'escape' => false];
         foreach ($fields as $field) {
-            $columns['field' . $field->get('id')] = format_string($field->get('name'));
+            $columns['field' . $field->get('id')] = format_string($field->get('name'), true, $plain);
         }
 
         $dateformat = get_string('strftimedate', 'langconfig');
@@ -440,8 +507,8 @@ class manager {
             $category = $categories[$activity->categoryid] ?? null;
             $row = [
                 'activitydate' => userdate($activity->activitydate, $dateformat),
-                'title' => $this->safe_export_value(format_string($activity->title)),
-                'category' => $this->safe_export_value($category ? format_string($category->name) : ''),
+                'title' => $this->safe_export_value(format_string($activity->title, true, $plain)),
+                'category' => $this->safe_export_value($category ? format_string($category->name, true, $plain) : ''),
                 'hours' => $activity->hours === null ? '' : format_float($activity->hours, 2),
                 'points' => format_float($activity->points, 2),
                 'description' => $this->safe_export_value((string)$activity->description),
@@ -503,6 +570,25 @@ class manager {
               ORDER BY c.startdate DESC, c.id DESC";
 
         return $DB->get_records_sql($sql);
+    }
+
+    /**
+     * Cycle names keyed by id, newest first, for a select element.
+     *
+     * Core select templates print option labels without escaping them,
+     * so the labels are HTML-escaped exactly once here.
+     *
+     * @param bool $withcategoriesonly Only cycles that have categories, for example as a copy source.
+     * @return string[]
+     */
+    public function get_cycle_options(bool $withcategoriesonly = false): array {
+        $options = [];
+        foreach ($this->get_cycles() as $cycle) {
+            if (!$withcategoriesonly || $cycle->categorycount) {
+                $options[$cycle->id] = format_string($cycle->name);
+            }
+        }
+        return $options;
     }
 
     /**
@@ -624,7 +710,9 @@ class manager {
         }
 
         $required = (float)($data->requiredpoints ?? 0);
-        if ($required < 0) {
+        if (!is_finite($required)) {
+            $errors['requiredpoints'] = get_string('errornotanumber', 'local_cpdtracker');
+        } else if ($required < 0) {
             $errors['requiredpoints'] = get_string('errornegativepoints', 'local_cpdtracker');
         } else if ($required > self::MAX_POINTS_SETTING) {
             $errors['requiredpoints'] = get_string('errortoolarge', 'local_cpdtracker', format_float(self::MAX_POINTS_SETTING, 0));
@@ -821,7 +909,9 @@ class manager {
         ];
         foreach ($limits as $field => $limit) {
             $value = (float)($data->$field ?? 0);
-            if ($value < 0) {
+            if (!is_finite($value)) {
+                $errors[$field] = get_string('errornotanumber', 'local_cpdtracker');
+            } else if ($value < 0) {
                 $errors[$field] = get_string('errornegativepoints', 'local_cpdtracker');
             } else if ($value > $limit) {
                 $errors[$field] = get_string('errortoolarge', 'local_cpdtracker', format_float($limit, 0));
@@ -946,6 +1036,10 @@ class manager {
      */
     public function get_report_page(stdClass $cycle, int $page, int $perpage): stdClass {
         global $DB;
+
+        // A negative page or page size from the URL must not reach the database layer.
+        $page = max(0, $page);
+        $perpage = max(1, $perpage);
 
         $capjoin = get_with_capability_join(\context_system::instance(), 'local/cpdtracker:logactivity', 'u.id');
         $namefields = \core_user\fields::for_name()->get_sql('u', true, '', '', false);

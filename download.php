@@ -35,11 +35,21 @@ require_capability('local/cpdtracker:logactivity', $context);
 $PAGE->set_url(new moodle_url('/local/cpdtracker/download.php', ['cycleid' => $cycleid]));
 $PAGE->set_context($context);
 
+// Only data formats enabled on this site.
+if (!array_key_exists($dataformat, core_plugin_manager::instance()->get_enabled_plugins('dataformat'))) {
+    throw new moodle_exception('invalidparameter', 'debug');
+}
+
 $manager = new \local_cpdtracker\manager();
 $cycle = $manager->get_cycle($cycleid);
 
 // Only ever the current user's own activities.
 $export = $manager->get_record_export((int)$USER->id, $cycle);
-$filename = clean_filename(get_string('downloadfilename', 'local_cpdtracker', format_string($cycle->name)));
+$filename = clean_filename(get_string(
+    'downloadfilename',
+    'local_cpdtracker',
+    format_string($cycle->name, true, ['context' => $context, 'escape' => false])
+));
 
+\local_cpdtracker\event\record_downloaded::create_from_cycle($cycle, (int)$USER->id, $dataformat)->trigger();
 \core\dataformat::download_data($filename, $dataformat, $export->columns, $export->rows);

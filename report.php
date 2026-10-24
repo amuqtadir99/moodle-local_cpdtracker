@@ -26,7 +26,7 @@ require(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/adminlib.php');
 
 $cycleid = optional_param('cycleid', 0, PARAM_INT);
-$page = optional_param('page', 0, PARAM_INT);
+$page = max(0, optional_param('page', 0, PARAM_INT));
 $perpage = 50;
 
 // Handles require_login, the local/cpdtracker:viewreport check, page context and admin navigation.
@@ -52,11 +52,16 @@ if (!isset($cycles[$cycleid])) {
 $cycle = $cycles[$cycleid];
 $baseurl = new moodle_url('/local/cpdtracker/report.php', ['cycleid' => $cycleid]);
 
-$options = [];
-foreach ($cycles as $option) {
-    $options[$option->id] = format_string($option->name);
-}
-$select = new single_select(new moodle_url('/local/cpdtracker/report.php'), 'cycleid', $options, $cycleid, null);
+// Viewing other members' personal data is logged.
+\local_cpdtracker\event\report_viewed::create_from_cycle($cycle)->trigger();
+
+$select = new single_select(
+    new moodle_url('/local/cpdtracker/report.php'),
+    'cycleid',
+    $manager->get_cycle_options(),
+    $cycleid,
+    null
+);
 $select->set_label(get_string('cycle', 'local_cpdtracker'));
 echo $OUTPUT->render($select);
 

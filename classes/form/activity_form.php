@@ -80,6 +80,13 @@ class activity_form extends \moodleform {
             ['rows' => 4, 'cols' => 60]
         );
         $mform->setType('description', PARAM_TEXT);
+        $mform->addRule(
+            'description',
+            get_string('maximumchars', '', manager::MAX_DESCRIPTION_LENGTH),
+            'maxlength',
+            manager::MAX_DESCRIPTION_LENGTH,
+            'client'
+        );
 
         $mform->addElement('date_selector', 'activitydate', get_string('activitydate', 'local_cpdtracker'));
         $mform->setDefault('activitydate', time());

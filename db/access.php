@@ -35,9 +35,9 @@ $capabilities = [
         ],
     ],
 
-    // Create and edit cycles and categories.
+    // Create and edit cycles and categories, and design the activity form (custom fields, as core flags with RISK_SPAM).
     'local/cpdtracker:manage' => [
-        'riskbitmask' => RISK_CONFIG,
+        'riskbitmask' => RISK_CONFIG | RISK_SPAM,
         'captype' => 'write',
         'contextlevel' => CONTEXT_SYSTEM,
         'archetypes' => [

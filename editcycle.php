@@ -41,14 +41,7 @@ $PAGE->set_title($title);
 $PAGE->navbar->add($title);
 
 // Cycles with categories can be copied into a new cycle.
-$copyoptions = [];
-if (!$id) {
-    foreach ($manager->get_cycles() as $option) {
-        if ($option->categorycount) {
-            $copyoptions[$option->id] = format_string($option->name);
-        }
-    }
-}
+$copyoptions = $id ? [] : $manager->get_cycle_options(true);
 
 $form = new \local_cpdtracker\form\cycle_form($url, ['id' => $id, 'copyoptions' => $copyoptions]);
 

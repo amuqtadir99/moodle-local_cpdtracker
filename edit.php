@@ -50,6 +50,14 @@ if ($id) {
     if (!$cycle) {
         throw new moodle_exception('nocurrentcycle', 'local_cpdtracker', $returnurl);
     }
+    if (!$manager->can_add_activity((int)$USER->id, (int)$cycle->id)) {
+        redirect(
+            $returnurl,
+            get_string('erroractivitylimit', 'local_cpdtracker', \local_cpdtracker\manager::MAX_ACTIVITIES_PER_CYCLE),
+            null,
+            notification::NOTIFY_ERROR
+        );
+    }
 }
 
 $pagetitle = get_string($id ? 'editactivity' : 'logactivity', 'local_cpdtracker');

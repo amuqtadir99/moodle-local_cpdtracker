@@ -1,5 +1,19 @@
 # Changes
 
+## 1.3.0 (2026102400) - 2026-10-24
+
+Security and data protection release.
+
+- Points, hours, required points, minimums, caps and rates now reject values that are not finite numbers, and activity amounts that round to 0.
+- Hours multiplied by a category's rate can no longer exceed the per-activity points limit.
+- Activity descriptions are limited to 10,000 characters, and members can log at most 1,000 activities per cycle.
+- When a user account is deleted, that member's CPD activities and form answers are now deleted too.
+- Viewing the compliance report and downloading a CPD record are now logged as Moodle events.
+- Downloads accept only data formats enabled on the site, and exported text no longer shows HTML entities such as `&amp;`.
+- The compliance report handles invalid page numbers.
+- The manage capability is now flagged as a configuration and spam risk.
+- Automated testing now also covers MySQL. 93 PHPUnit tests on Moodle 4.5 and 5.3.
+
 ## 1.2.1 (2026102302) - 2026-10-23
 
 - My CPD now shows "Not required" instead of "Met" for categories without a minimum, so a category with no points no longer looks completed.
